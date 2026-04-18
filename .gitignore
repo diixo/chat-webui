@@ -1,0 +1,15 @@
+
+.vscode/*
+wandb/
+__py*
+__pycache__/*
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
