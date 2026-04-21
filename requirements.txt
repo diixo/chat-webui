@@ -1,0 +1,21 @@
+# HuggingFace Transformers Chat Server
+# Install with: pip install -r requirements.txt
+
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# HuggingFace stack
+transformers>=4.45.0
+accelerate>=0.34.0      # multi-GPU / CPU offload via device_map="auto"
+torch>=2.3.0            # or torch with CUDA: pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# Optional: faster tokenization
+tokenizers>=0.20.0
+
+# Optional: 4-bit / 8-bit quantization
+# bitsandbytes>=0.43.0
+# auto-gptq>=0.7.0
+
+# Optional: flash attention 2 (Linux / CUDA only)
+# flash-attn>=2.6.0

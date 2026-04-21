@@ -13,3 +13,8 @@ __pycache__/*
 # Cython debug symbols
 cython_debug/
 
+# automatically recreate after each "npm run build"
+server/public/_app/
+
+models/
+.env*
