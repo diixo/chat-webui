@@ -42,80 +42,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStream
 
 
 
-from dotenv import load_dotenv
-import os
-from pybeamer import Codebeamer
-
-
-load_dotenv()
-
-codebeamer_url = os.getenv('CODEBEAMER_URL')
-codebeamer_username = os.getenv('CODEBEAMER_USERNAME')
-codebeamer_password = os.getenv('CODEBEAMER_PASSWORD')
-codebeamer_api_root = os.getenv('CODEBEAMER_API_ROOT', 'api/v3')
-
-
-if not all([codebeamer_url, codebeamer_username, codebeamer_password]):
-    raise ValueError(
-        'Missing required environment variables: '
-        'CODEBEAMER_URL, CODEBEAMER_USERNAME, CODEBEAMER_PASSWORD'
-    )
-
-codebeamer = Codebeamer(
-    url=codebeamer_url,
-    username=codebeamer_username,
-    password=codebeamer_password,
-    api_root=codebeamer_api_root
-)
-
-user = codebeamer.get_user(codebeamer_username)
-
-project_id = int(os.getenv('CODEBEAMER_PROJECT_ID', '25'))
-
-projects = codebeamer.get_projects()
-projects_map = {project.id: project for project in projects}
-
-if project_id not in projects_map:
-    known_ids = ', '.join(str(pid) for pid in sorted(projects_map.keys())[:20])
-    raise ValueError(f'Project with id={project_id} not found in fetched projects. Known IDs (first 20): {known_ids}')
-
-project = projects_map[project_id]
-
-type2id = codebeamer.get_tracker_types()
-names_ui2api = {
-    "Area": "Area",
-    "Bug": "Bug",
-    "Change Request": "Change Request",
-    "Component": "Component",
-    "Configuration Item": "Configuration Item",
-    "Contact": "Contact",
-    "Document": "Document",
-    "Epic": "Epic",
-    "Issue": "Issue",
-    "Platform": "Platform",
-    "Release": "Release",
-    "Requirement": "Requirement",
-    "Risk": "Risk",
-    "RPE Report": "RPE Report",
-    "Task": "Task",
-    "Team": "Team",
-    "Test Case": "Testcase",
-    "Test Configuration": "Testconf",
-    "Test Run": "Testrun",
-    "Test Set": "Testset",
-    "Time Recording": "Work Log",
-    "User Story": "User Story",
-}
-ui2id = dict()
-
-for name_ui, name_api in names_ui2api.items():
-    ui2id[name_ui] = type2id[name_api]
-
-
-print(f"ui2id: {len(ui2id)}, names: {len(names_ui2api)}")
-
-assert len(ui2id) == len(names_ui2api), "Expected to find all types, but only found"
-
 # ---------------------------------------------------------------------------
 # Optional agent tooling (agent_tooling.py must be in the same directory)
 # ---------------------------------------------------------------------------
@@ -128,7 +54,7 @@ try:
         normalize_result as _normalize_tooling_result,
         init_codebeamer as _init_codebeamer,
     )
-    _init_codebeamer(project, user, ui2id)
+    _init_codebeamer()
     _TOOLING_AVAILABLE = True
 except ImportError:
     _TOOLING_AVAILABLE = False

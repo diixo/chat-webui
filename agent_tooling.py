@@ -5,6 +5,9 @@ from typing import Dict, Any
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+from dotenv import load_dotenv
+import os
+from pybeamer import Codebeamer
 
 MODEL_NAME = "models/Qwen3-0.6B"
 
@@ -72,17 +75,98 @@ User: have you created the task already?
 Assistant: {"intent":"unknown","tracker_type":"","description":""}
 """
 
-_codebeamer_context: dict = {}
-
 BASE_URL = "https://dxc.codebeamer.com/tracker/"
 
-def init_codebeamer(project, user, ui2id: dict) -> None:
+_codebeamer_context: dict = {}
+
+
+def init_codebeamer() -> dict:
+    """Initialize Codebeamer connection and return context.
+
+    Returns:
+        dict: Dictionary containing 'project', 'user', and 'ui2id' keys.
+    """
+    global _codebeamer_context
+
+    load_dotenv()
+
+    codebeamer_url = os.getenv('CODEBEAMER_URL')
+    codebeamer_username = os.getenv('CODEBEAMER_USERNAME')
+    codebeamer_password = os.getenv('CODEBEAMER_PASSWORD')
+    codebeamer_api_root = os.getenv('CODEBEAMER_API_ROOT', 'api/v3')
+
+
+    if not all([codebeamer_url, codebeamer_username, codebeamer_password]):
+        raise ValueError(
+            'Missing required environment variables: '
+            'CODEBEAMER_URL, CODEBEAMER_USERNAME, CODEBEAMER_PASSWORD'
+        )
+
+    codebeamer = Codebeamer(
+        url=codebeamer_url,
+        username=codebeamer_username,
+        password=codebeamer_password,
+        api_root=codebeamer_api_root
+    )
+
+    user = codebeamer.get_user(codebeamer_username)
+
+    project_id = int(os.getenv('CODEBEAMER_PROJECT_ID', '25'))
+
+    projects = codebeamer.get_projects()
+    projects_map = {project.id: project for project in projects}
+
+    if project_id not in projects_map:
+        known_ids = ', '.join(str(pid) for pid in sorted(projects_map.keys())[:20])
+        raise ValueError(f'Project with id={project_id} not found in fetched projects. Known IDs (first 20): {known_ids}')
+
+    project = projects_map[project_id]
+
+    type2id = codebeamer.get_tracker_types()
+    names_ui2api = {
+        "Area": "Area",
+        "Bug": "Bug",
+        "Change Request": "Change Request",
+        "Component": "Component",
+        "Configuration Item": "Configuration Item",
+        "Contact": "Contact",
+        "Document": "Document",
+        "Epic": "Epic",
+        "Issue": "Issue",
+        "Platform": "Platform",
+        "Release": "Release",
+        "Requirement": "Requirement",
+        "Risk": "Risk",
+        "RPE Report": "RPE Report",
+        "Task": "Task",
+        "Team": "Team",
+        "Test Case": "Testcase",
+        "Test Configuration": "Testconf",
+        "Test Run": "Testrun",
+        "Test Set": "Testset",
+        "Time Recording": "Work Log",
+        "User Story": "User Story",
+    }
+    ui2id = dict()
+
+    for name_ui, name_api in names_ui2api.items():
+        ui2id[name_ui] = type2id[name_api]
+
+
+    print(f"ui2id: {len(ui2id)}, names: {len(names_ui2api)}")
+
+    assert len(ui2id) == len(names_ui2api), "Expected to find all types, but only found"
+
     _codebeamer_context["project"] = project
     _codebeamer_context["user"] = user
     _codebeamer_context["ui2id"] = ui2id
 
+    return _codebeamer_context.copy()
+
 
 def create_tracker(description: str, tracker_type: str) -> dict:
+    global _codebeamer_context
+
     project = _codebeamer_context.get("project")
     user = _codebeamer_context.get("user")
     ui2id = _codebeamer_context.get("ui2id", {})
