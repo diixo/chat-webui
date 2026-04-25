@@ -28,12 +28,12 @@ Demo in browser: `http://127.0.0.1:8080`
 
 ```bash
 python server.py --model gpt2
-# looks inside models/gpt2/*
+# looks for models/gpt2/
 ```
 
 ```bash
 python server.py --model Qwen3-0.6B
-# looks inside models/Qwen3-0.6B/*
+# looks for models/gpt2/
 ```
 
 * **2)** Model from HuggingFace Hub
