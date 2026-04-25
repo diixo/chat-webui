@@ -20,6 +20,6 @@ tokenizers>=0.20.0
 # Optional: flash attention 2 (Linux / CUDA only)
 # flash-attn>=2.6.0
 
-# pybeamer dependency
-loguru
-
+loguru>=0.6.0
+requests>=2.31.0
+python-dotenv>=1.0.0

@@ -48,6 +48,19 @@ python server.py --model Qwen/Qwen2.5-1.5B-Instruct
 python server.py --model ./models/gpt2
 ```
 
+
+## Rebuild UI
+
+Only needed when changing source files in `server/webui/src/`.
+The result is compiled into `server/public/` (this is the folder served by the server).
+
+```bash
+cd server/webui
+npm install        # first time or after changing package.json
+npm run build      # rebuild bundle.js / bundle.css
+```
+
+
 ### All options
 
 | Flag | Default | Description |
@@ -80,16 +93,6 @@ python server.py --model Qwen3-1.7B
 
 ---
 
-## Rebuild UI
-
-Only needed when changing source files in `server/webui/src/`.  
-The result is compiled into `server/public/` (this is the folder served by the server).
-
-```bash
-cd server/webui
-npm install        # first time or after changing package.json
-npm run build      # rebuild bundle.js / bundle.css
-```
 
 ### Data Source Configuration
 
