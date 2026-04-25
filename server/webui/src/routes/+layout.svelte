@@ -107,8 +107,8 @@
 		}
 
 		if (isHomeRoute && !isNewChatMode) {
-			// Auto-collapse sidebar when navigating to home route (but not in new chat mode)
-			sidebarOpen = false;
+			// Keep the sidebar open on initial load of the home route.
+			sidebarOpen = true;
 		} else if (isHomeRoute && isNewChatMode) {
 			// Keep sidebar open in new chat mode
 			sidebarOpen = true;

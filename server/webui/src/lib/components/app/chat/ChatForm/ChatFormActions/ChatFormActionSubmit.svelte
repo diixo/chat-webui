@@ -31,7 +31,7 @@
 			'h-8 w-8 rounded-full p-0',
 			showErrorState
 				? 'bg-red-400/10 text-red-400 hover:bg-red-400/20 hover:text-red-400 disabled:opacity-100'
-				: ''
+				: 'bg-[rgb(0,145,218)] text-white hover:bg-[rgb(0,120,190)]'
 		)}
 		{...props}
 	>
