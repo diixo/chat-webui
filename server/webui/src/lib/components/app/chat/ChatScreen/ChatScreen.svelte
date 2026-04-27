@@ -367,7 +367,7 @@
 			/>
 
 			<div
-				class="pointer-events-none sticky right-0 bottom-4 left-0 mt-auto"
+				class="pointer-events-none sticky right-0 bottom-8 left-0 mt-auto"
 				in:slide={{ duration: 150, axis: 'y' }}
 			>
 				<ChatScreenProcessingInfo />
