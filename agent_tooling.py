@@ -75,7 +75,7 @@ User: have you created the task already?
 Assistant: {"intent":"unknown","tracker_type":"","description":""}
 """
 
-BASE_URL = "https://dxc.codebeamer.com/tracker/"
+BASE_URL = ""  # set in init_codebeamer() from CODEBEAMER_URL
 
 _codebeamer_context: dict = {}
 
@@ -86,7 +86,7 @@ def init_codebeamer() -> dict:
     Returns:
         dict: Dictionary containing 'project', 'user', and 'ui2id' keys.
     """
-    global _codebeamer_context
+    global _codebeamer_context, BASE_URL
 
     load_dotenv()
 
@@ -95,12 +95,13 @@ def init_codebeamer() -> dict:
     codebeamer_password = os.getenv('CODEBEAMER_PASSWORD')
     codebeamer_api_root = os.getenv('CODEBEAMER_API_ROOT', 'api/v3')
 
-
     if not all([codebeamer_url, codebeamer_username, codebeamer_password]):
         raise ValueError(
             'Missing required environment variables: '
             'CODEBEAMER_URL, CODEBEAMER_USERNAME, CODEBEAMER_PASSWORD'
         )
+
+    BASE_URL = codebeamer_url.rstrip('/') + '/tracker/'
 
     codebeamer = Codebeamer(
         url=codebeamer_url,
@@ -110,6 +111,8 @@ def init_codebeamer() -> dict:
     )
 
     user = codebeamer.get_user(codebeamer_username)
+    if user is None:
+        raise ValueError(f"User '{codebeamer_username}' not found in Codebeamer")
 
     project_id = int(os.getenv('CODEBEAMER_PROJECT_ID', '25'))
 
@@ -149,13 +152,20 @@ def init_codebeamer() -> dict:
     }
     ui2id = dict()
 
+    missing = [
+        f"{name_ui!r} (api={name_api!r})"
+        for name_ui, name_api in names_ui2api.items()
+        if name_api not in type2id
+    ]
+    if missing:
+        raise ValueError(
+            f"Tracker types not found in Codebeamer: {', '.join(missing)}"
+        )
+
     for name_ui, name_api in names_ui2api.items():
         ui2id[name_ui] = type2id[name_api]
 
-
     print(f"ui2id: {len(ui2id)}, names: {len(names_ui2api)}")
-
-    assert len(ui2id) == len(names_ui2api), "Expected to find all types, but only found"
 
     _codebeamer_context["project"] = project
     _codebeamer_context["user"] = user

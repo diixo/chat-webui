@@ -58,6 +58,9 @@ try:
     _TOOLING_AVAILABLE = True
 except ImportError:
     _TOOLING_AVAILABLE = False
+except Exception as _tooling_exc:
+    print(f"WARNING: agent_tooling init failed — tooling disabled: {_tooling_exc}", flush=True)
+    _TOOLING_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -520,7 +523,7 @@ def _classify_intent_sync(user_text: str) -> dict:
         return _normalize_tooling_result(parsed)
     except Exception as exc:
         log.debug("Intent classification failed: %s", exc)
-        return {"intent": "unknown", "description": ""}
+        return {"intent": "unknown", "tracker_type": "", "description": ""}
 
 
 async def _stream_tool_response(tool_result: dict) -> AsyncGenerator[str, None]:
