@@ -32,6 +32,8 @@ class Project:
 		self._id: int = id
 		self._name: str = name
 		self._client: RestClient = kwargs.get('client')
+		self._trackers: list[Tracker] = list()
+		self._loaded: bool = False
 		# type only appears in GET /projects
 		if not kwargs.get('type'):
 			# if type is present then no other information is present
@@ -39,8 +41,6 @@ class Project:
 		else:
 			prop_defaults = {k: None for k in self.__class__.__annotations__}
 			self.__dict__.update(prop_defaults)
-			self._trackers = list()
-			self._loaded = False
 
 	@property
 	def id(self) -> int:

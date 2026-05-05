@@ -565,8 +565,8 @@ class TrackerItem:
 	def create_child_tracker_item(
 		self,
 		name: str,
-		description: str = '--',
-		type_name: str = None,
+		description: str,
+		type_name: str,
 		description_format: str = 'PlainText',
 		reference_id: int = None,
 		position: str = 'AFTER',

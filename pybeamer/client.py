@@ -42,7 +42,8 @@ class Codebeamer:
 		
 	def _get_project_by_id(self, id: int) -> Project | None:
 		try:
-			project = Project(**self._client.get(f'projects/{id}'), client=self._client)
+			resp = self._client.get(f'projects/{id}')
+			project = Project(**resp, client=self._client)
 			return project
 		except:
 			return

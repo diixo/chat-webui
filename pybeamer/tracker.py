@@ -320,8 +320,8 @@ class Tracker:
 	def create_tracker_item(
 		self,
 		name: str,
-		description: str = '--',
-		type_name: str = None,
+		description: str,
+		type_name: str,
 		description_format: str = 'PlainText',
 		parent_id: int = None,
 		reference_id: int = None,
@@ -347,14 +347,13 @@ class Tracker:
 			'descriptionFormat': description_format
 		}
 
-		# typeName is a system field that needs to be in the top level of the json body, not in customFields
-		if type_name:
-			if type_name in TrackerItem.TYPE_MAP:
-				data['typeName'] = type_name
+		if type_name in TrackerItem.TYPE_MAP:
+			data['typeName'] = type_name
 
-				data['categories'] = [{'id': TrackerItem.TYPE_MAP[type_name], 'name': type_name, 'type': 'ChoiceOptionReference'}]
-			else:
-				raise ValueError(f"Invalid type_name: {type_name}. Must be one of: {', '.join(TrackerItem.TYPE_MAP.keys())}")
+			data['categories'] = [{'id': TrackerItem.TYPE_MAP[type_name], 'name': type_name, 'type': 'ChoiceOptionReference'}]
+		else:
+			raise ValueError(f"Invalid type_name: {type_name}. Must be one of: {', '.join(TrackerItem.TYPE_MAP.keys())}")
+
 
 		for field, value in kwargs.items():
 			if field in system_fields:
