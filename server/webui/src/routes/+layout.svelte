@@ -15,6 +15,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { isRouterMode, serverStore } from '$lib/stores/server.svelte';
 	import { config, settingsStore } from '$lib/stores/settings.svelte';
+	import { applyTheme } from '$lib/utils/theme';
 	import { ModeWatcher } from 'mode-watcher';
 	import { Toaster } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
@@ -132,6 +133,13 @@
 				serverStore.fetch();
 			});
 		}
+	});
+
+	// Apply persisted theme on load — needed for KDE which adds a class on
+	// <html> beyond what mode-watcher tracks on its own.
+	$effect(() => {
+		if (!browser) return;
+		untrack(() => applyTheme(config().theme as string));
 	});
 
 	// Sync settings when server props are loaded

@@ -89,6 +89,51 @@
 	--code-foreground: oklch(0.875 0 0);
 }
 
+/* KDE Breeze theme — layered on top of .dark (mode-watcher set to dark when
+   user selects this option). Overrides palette + accent + radius + font with
+   values inspired by Plasma's Breeze design language. */
+.kde {
+	--radius: 0.25rem;
+	--background: oklch(0.275 0.008 230);          /* #232629 */
+	--foreground: oklch(0.97 0 0);                 /* near-white */
+	--card: oklch(0.31 0.008 230);                 /* #2a2e32 */
+	--card-foreground: oklch(0.97 0 0);
+	--popover: oklch(0.31 0.008 230);
+	--popover-foreground: oklch(0.97 0 0);
+	--primary: oklch(0.72 0.13 235);               /* Breeze blue #3daee9 */
+	--primary-foreground: oklch(0.16 0.005 230);
+	--secondary: oklch(0.36 0.01 230);
+	--secondary-foreground: oklch(0.97 0 0);
+	--muted: oklch(0.34 0.008 230);
+	--muted-foreground: oklch(0.72 0.01 230);
+	/* Accent in Breeze is a subtle gray-blue used for hover/secondary fills.
+	   The blue we want for *active* emphasis lives in --accent-foreground so
+	   `text-accent-foreground` (used by active sidebar items) renders blue. */
+	--accent: oklch(0.34 0.01 230);
+	--accent-foreground: oklch(0.72 0.13 235);
+	--destructive: oklch(0.62 0.21 25);            /* Breeze red */
+	--border: oklch(0.45 0.01 230 / 60%);
+	--input: oklch(0.4 0.01 230 / 70%);
+	--ring: oklch(0.72 0.13 235);
+	--sidebar: oklch(0.245 0.008 230);             /* slightly darker than bg */
+	--sidebar-foreground: oklch(0.97 0 0);
+	--sidebar-primary: oklch(0.72 0.13 235);
+	--sidebar-primary-foreground: oklch(0.16 0.005 230);
+	--sidebar-accent: oklch(0.36 0.01 230);
+	--sidebar-accent-foreground: oklch(0.97 0 0);
+	--sidebar-border: oklch(0.45 0.01 230 / 50%);
+	--sidebar-ring: oklch(0.72 0.13 235);
+	--code-background: oklch(0.245 0.008 230);
+	--code-foreground: oklch(0.92 0 0);
+
+	font-family:
+		'Noto Sans',
+		'Segoe UI',
+		system-ui,
+		-apple-system,
+		sans-serif;
+}
+
 @theme inline {
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);

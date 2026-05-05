@@ -17,6 +17,29 @@ import {
 import type { ApiChatMessageContentPart, ApiChatCompletionToolCall } from '$lib/types/api';
 import type { DatabaseMessageExtraMcpPrompt, DatabaseMessageExtraMcpResource } from '$lib/types';
 import { modelsStore } from '$lib/stores/models.svelte';
+import { chatMode } from '$lib/stores/chat-mode.svelte';
+
+/**
+ * In QA mode, drop the conversation history — keep only the system messages
+ * (which already passed the empty-content filter) and the latest user turn.
+ * The on-screen / IndexedDB conversation is unchanged; only what we send to
+ * the model is trimmed.
+ */
+function applyQaModeFilter<T extends { role: string }>(messages: T[]): T[] {
+	if (chatMode() !== 'QA') return messages;
+
+	const systems = messages.filter((m) => m.role === MessageRole.SYSTEM);
+
+	let lastUser: T | null = null;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i].role === MessageRole.USER) {
+			lastUser = messages[i];
+			break;
+		}
+	}
+
+	return lastUser ? [...systems, lastUser] : systems;
+}
 
 export class ChatService {
 	/**
@@ -129,8 +152,10 @@ export class ChatService {
 			});
 		}
 
+		const messagesToSend = applyQaModeFilter(normalizedMessages);
+
 		const requestBody: ApiChatCompletionRequest = {
-			messages: normalizedMessages.map((msg: ApiChatMessageData) => {
+			messages: messagesToSend.map((msg: ApiChatMessageData) => {
 				const mapped: ApiChatCompletionRequest['messages'][0] = {
 					role: msg.role,
 					content: msg.content,
@@ -344,8 +369,10 @@ export class ChatService {
 				return true;
 			});
 
+		const messagesToSend = applyQaModeFilter(normalizedMessages);
+
 		const requestBody: Record<string, unknown> = {
-			messages: normalizedMessages.map((msg: ApiChatMessageData) => {
+			messages: messagesToSend.map((msg: ApiChatMessageData) => {
 				const mapped: Record<string, unknown> = {
 					role: msg.role,
 					content: excludeReasoning ? ChatService.stripReasoningContent(msg.content) : msg.content,

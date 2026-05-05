@@ -16,16 +16,24 @@
 		buildConversationTree
 	} from '$lib/stores/conversations.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
+	import { chatModeStore, type ChatMode } from '$lib/stores/chat-mode.svelte';
 	import { getPreviewText } from '$lib/utils';
 	import ChatSidebarActions from './ChatSidebarActions.svelte';
+
+	// ── Chat mode ─────────────────────────────────────────────────────────────
+	const MODES: { value: ChatMode; label: string }[] = [
+		{ value: 'QA', label: 'QA (question-answer)' },
+		{ value: 'Dialogue', label: 'Dialogue' }
+	];
+	let selectedModeLabel = $derived(
+		MODES.find((m) => m.value === chatModeStore.mode)?.label ?? 'Select mode…'
+	);
 
 	// ── Data source config ────────────────────────────────────────────────────
 	let configData = $state<Record<string, string[]>>({});
 	let selectedSource = $state('');
-	let selectedProject = $state('');
 
 	let sourceKeys = $derived(Object.keys(configData));
-	let projectItems = $derived(selectedSource ? (configData[selectedSource] ?? []) : []);
 
 	onMount(async () => {
 		try {
@@ -170,48 +178,48 @@
 		<ChatSidebarActions {handleMobileSidebarItemClick} bind:isSearchModeActive bind:searchQuery />
 	</Sidebar.Header>
 
+	<Sidebar.Group class="p-0 px-4 pt-3 pb-1">
+		<div class="space-y-1.5">
+			<p class="text-xs font-medium text-muted-foreground">Mode</p>
+			<Select.Root
+				type="single"
+				value={chatModeStore.mode}
+				onValueChange={(v) => {
+					if (v === 'QA' || v === 'Dialogue') chatModeStore.set(v);
+				}}
+			>
+				<Select.Trigger class="w-full bg-background">
+					{selectedModeLabel}
+				</Select.Trigger>
+				<Select.Content>
+					{#each MODES as mode (mode.value)}
+						<Select.Item value={mode.value} label={mode.label}>{mode.label}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		</div>
+	</Sidebar.Group>
+
 	{#if sourceKeys.length > 0}
 		<Sidebar.Group class="p-0 px-4 pt-3 pb-1">
-			<div class="space-y-3">
-				<div class="space-y-1.5">
-					<p class="text-xs font-medium text-muted-foreground">Available sources of data</p>
-					<Select.Root
-						type="single"
-						value={selectedSource}
-						onValueChange={(v) => {
-							selectedSource = v;
-							selectedProject = '';
-						}}
-					>
-						<Select.Trigger class="w-full bg-background">
-							{selectedSource || 'Select source…'}
-						</Select.Trigger>
-						<Select.Content>
-							{#each sourceKeys as key (key)}
-								<Select.Item value={key} label={key}>{key}</Select.Item>
-							{/each}
-						</Select.Content>
-					</Select.Root>
-				</div>
-
-				<div class="space-y-1.5">
-					<p class="text-xs font-medium text-muted-foreground">Project</p>
-					<Select.Root
-						type="single"
-						value={selectedProject}
-						disabled={projectItems.length === 0}
-						onValueChange={(v) => { selectedProject = v; }}
-					>
-						<Select.Trigger class="w-full bg-background">
-							{selectedProject || 'Select project…'}
-						</Select.Trigger>
-						<Select.Content>
-							{#each projectItems as project (project)}
-								<Select.Item value={project} label={project}>{project}</Select.Item>
-							{/each}
-						</Select.Content>
-					</Select.Root>
-				</div>
+			<div class="space-y-1.5">
+				<p class="text-xs font-medium text-muted-foreground">Available sources of data</p>
+				<Select.Root
+					type="single"
+					value={selectedSource}
+					onValueChange={(v) => {
+						selectedSource = v;
+					}}
+				>
+					<Select.Trigger class="w-full bg-background">
+						{selectedSource || 'Select source…'}
+					</Select.Trigger>
+					<Select.Content>
+						{#each sourceKeys as key (key)}
+							<Select.Item value={key} label={key}>{key}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
 			</div>
 		</Sidebar.Group>
 

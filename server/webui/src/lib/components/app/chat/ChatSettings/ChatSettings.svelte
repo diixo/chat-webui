@@ -26,8 +26,7 @@
 		SETTINGS_COLOR_MODES_CONFIG,
 		SETTINGS_KEYS
 	} from '$lib/constants';
-	import { setMode } from 'mode-watcher';
-	import { ColorMode } from '$lib/enums/ui';
+	import { applyTheme } from '$lib/utils/theme';
 	import { SettingsFieldType } from '$lib/enums/settings';
 	import type { Component } from 'svelte';
 
@@ -364,7 +363,7 @@
 	function handleThemeChange(newTheme: string) {
 		localConfig.theme = newTheme;
 
-		setMode(newTheme as ColorMode);
+		applyTheme(newTheme);
 	}
 
 	function handleConfigChange(key: string, value: string | boolean) {
@@ -374,7 +373,7 @@
 	function handleReset() {
 		localConfig = { ...config() };
 
-		setMode(localConfig.theme as ColorMode);
+		applyTheme(localConfig.theme as string);
 	}
 
 	function handleSave() {

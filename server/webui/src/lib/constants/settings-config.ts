@@ -1,5 +1,5 @@
 import { ColorMode } from '$lib/enums/ui';
-import { Monitor, Moon, Sun } from '@lucide/svelte';
+import { Monitor, Moon, Palette, Sun } from '@lucide/svelte';
 
 export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | undefined> = {
 	// Note: in order not to introduce breaking changes, please keep the same data type (number, string, etc) if you want to change the default value.
@@ -9,7 +9,7 @@ export const SETTING_CONFIG_DEFAULT: Record<string, string | number | boolean | 
 	showSystemMessage: true,
 	theme: ColorMode.SYSTEM,
 	showThoughtInProgress: false,
-	disableReasoningParsing: false,
+	disableReasoningParsing: true,
 	excludeReasoningFromContext: false,
 	showRawOutputSwitch: false,
 	keepStatsVisible: false,
@@ -69,7 +69,7 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
 	systemMessage: 'The starting message that defines how model should behave.',
 	showSystemMessage: 'Display the system message at the top of each conversation.',
 	theme:
-		'Choose the color theme for the interface. You can choose between System (follows your device settings), Light, or Dark.',
+		'Choose the color theme for the interface. System follows your device settings; Light and Dark force the respective mode; KDE Breeze applies a Plasma-inspired blue accent on a dark base.',
 	pasteLongTextToFileLen:
 		'On pasting long text, it will be converted to a file. You can control the file length by setting the value of this parameter. Value 0 means disable.',
 	copyTextAttachmentsAsPlainText:
@@ -159,5 +159,6 @@ export const SETTING_CONFIG_INFO: Record<string, string> = {
 export const SETTINGS_COLOR_MODES_CONFIG = [
 	{ value: ColorMode.SYSTEM, label: 'System', icon: Monitor },
 	{ value: ColorMode.LIGHT, label: 'Light', icon: Sun },
-	{ value: ColorMode.DARK, label: 'Dark', icon: Moon }
+	{ value: ColorMode.DARK, label: 'Dark', icon: Moon },
+	{ value: ColorMode.KDE, label: 'KDE Breeze', icon: Palette }
 ];

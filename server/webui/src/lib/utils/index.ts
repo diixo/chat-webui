@@ -190,3 +190,6 @@ export {
 // Cryptography utilities
 
 export { uuid } from './uuid';
+
+// Theme utilities
+export { applyTheme } from './theme';

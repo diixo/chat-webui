@@ -6,7 +6,10 @@ Run:
     python test_classifier.py
 """
 
-from agent_tooling import load_model, classify_intent
+from utils import load_model, classify_intent
+
+from codebeamer_app import SYSTEM_PROMPT
+
 
 TEST_CASES = [
     # (user_input, expected_tracker_type)
@@ -90,14 +93,14 @@ TEST_CASES = [
 
 def run_tests():
     print("Loading model...")
-    tokenizer, model = load_model()
+    tokenizer, model = load_model("models/Qwen3-0.6B")
     print(f"Model loaded. Running {len(TEST_CASES)} test cases...\n")
 
     passed = 0
     failed = 0
 
     for user_input, expected_type in TEST_CASES:
-        result = classify_intent(tokenizer, model, user_input)
+        result = classify_intent(tokenizer, model, user_input, SYSTEM_PROMPT)
         intent = result["intent"]
         tracker_type = result["tracker_type"]
         description = result["description"]
