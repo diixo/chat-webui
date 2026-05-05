@@ -15,7 +15,7 @@ Suitable for local or remote inference, prompt testing, and everyday work with l
 
 ```bash
 pip install -r requirements.txt
-python server.py --model gpt2
+python server.py --model gpt2 --prompt-style raw
 ```
 
 Demo in browser: `http://127.0.0.1:8080`
@@ -26,10 +26,6 @@ Demo in browser: `http://127.0.0.1:8080`
 
 * **1)** Model from `models/` folder
 
-```bash
-python server.py --model gpt2 --prompt-style raw
-# looks for models/gpt2/*
-```
 
 ```bash
 python server.py --model Qwen3-0.6B
