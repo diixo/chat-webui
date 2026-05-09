@@ -190,6 +190,32 @@ Implementation notes:
   *server-side* for any client; QA mode strips it *client-side* before the
   request is even sent.
 
+### Visual themes
+
+The interface ships with four selectable themes, available in
+**Settings → General → Theme**. The choice is persisted in
+`localStorage` under the `theme` key (default: `system`).
+
+| Theme | Description |
+|---|---|
+| **System** (default) | Follows the operating system's `prefers-color-scheme` setting and switches automatically when it changes. |
+| **Light** | Forces the light palette regardless of OS preference. |
+| **Dark** | Forces the dark palette regardless of OS preference. |
+| **KDE Breeze** | Plasma-inspired theme — a blue accent on a dark base, with KDE Breeze radii and font tweaks layered on top of the dark token set. |
+
+Implementation notes:
+
+- Theme values are defined in the `ColorMode` enum
+  (`server/webui/src/lib/enums/ui.ts`) and registered for the settings UI in
+  `SETTINGS_COLOR_MODES_CONFIG` (`server/webui/src/lib/constants/settings-config.ts`).
+- `applyTheme()` in `server/webui/src/lib/utils/theme.ts` handles activation:
+  for `light` / `dark` / `system` it delegates to `mode-watcher`; for `kde`
+  it sets dark mode and adds a `.kde` class on `<html>`, which the rules in
+  `server/webui/src/app.css` use to override the palette.
+- Adding a new theme = extend the enum, add an entry to
+  `SETTINGS_COLOR_MODES_CONFIG`, handle it in `applyTheme()`, and add the
+  matching CSS overrides in `app.css`.
+
 ---
 
 ## Adding a New Tooling Backend
