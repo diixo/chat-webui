@@ -427,7 +427,7 @@
 	>
 		<div class="w-full max-w-[48rem] px-4">
 			<div class="mb-10 text-center" in:fade={{ duration: 300 }}>
-				<h1 class="text-2xl font-semibold tracking-tight md:text-3xl">AI-delix</h1>
+				<h1 class="text-2xl font-semibold tracking-tight md:text-3xl">Aiffy</h1>
 
 				<h4 class="mb-2 font-semibold">deliver impossible excellence</h4>
 
