@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import contextvars
 import json
 import logging
 import re
@@ -32,7 +31,6 @@ import threading
 import time
 import traceback
 import uuid
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator, Callable
 
@@ -93,24 +91,6 @@ def register_tooling(obj: AgentTooling) -> None:
 
 _after_response: Callable[[str, str], None] | None = None
 _AFTER_RESPONSE_REPLY_MAX_CHARS = 16000
-_suppress_after_response_context: contextvars.ContextVar[int] = contextvars.ContextVar(
-    "suppress_after_response_depth", default=0
-)
-
-
-@contextmanager
-def suppress_after_response() -> Any:
-    """Disable after-response callbacks for the current context.
-
-    Uses contextvars so suppression is visible across threads and async boundaries.
-    """
-    depth = _suppress_after_response_context.get()
-    token = _suppress_after_response_context.set(depth + 1)
-    try:
-        yield
-    finally:
-        _suppress_after_response_context.reset(token)
-
 
 def register_after_response(fn: Callable[[str, str], None]) -> None:
     """Register a callback invoked after each chat completion.
@@ -128,12 +108,7 @@ def _fire_after_response(
     suppress_after_response: bool = False,
 ) -> None:
     """Extract the last user message and fire the callback in a daemon thread."""
-    if (
-        _after_response is None
-        or not reply
-        or suppress_after_response
-        or _suppress_after_response_context.get() > 0
-    ):
+    if _after_response is None or not reply or suppress_after_response:
         return
     reply = reply[:_AFTER_RESPONSE_REPLY_MAX_CHARS]
     user_msg: Any = next(
