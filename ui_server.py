@@ -319,6 +319,7 @@ class Completions:
         top_k: int,
         repeat_penalty: float,
         stream: bool,
+        enable_thinking: bool | None = None,
     ) -> "ChatCompletion | Iterator[ChatCompletionChunk]":
         body: dict[str, Any] = {
             "model": model or self._model,
@@ -330,6 +331,8 @@ class Completions:
             "top_k": top_k,
             "repeat_penalty": repeat_penalty,
         }
+        if enable_thinking is not None:
+            body["enable_thinking"] = enable_thinking
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
@@ -354,6 +357,7 @@ class Completions:
         top_p: float = _server.DEFAULT_GEN_PARAMS["top_p"],
         top_k: int = _server.DEFAULT_GEN_PARAMS["top_k"],
         repeat_penalty: float = _server.DEFAULT_GEN_PARAMS["repeat_penalty"],
+        enable_thinking: bool | None = None,
     ) -> "ChatCompletion | Iterator[ChatCompletionChunk]":
         effective_tools = tools if tools is not None else self._tools
 
@@ -380,6 +384,7 @@ class Completions:
             top_k=top_k,
             repeat_penalty=repeat_penalty,
             stream=stream if not effective_tools else False,
+            enable_thinking=enable_thinking,
         )
 
     def _agentic_create(
@@ -498,6 +503,7 @@ class UIServer:
         tooling: Any = None,
         system_prompt: str | None = None,
         prompt_style: str = "auto",
+        enable_thinking: bool | None = None,
         context_size: int = 1024,
         device: str = "auto",
         dtype: str = "auto",
@@ -513,6 +519,7 @@ class UIServer:
             trust_remote_code=trust_remote_code,
             system_prompt=system_prompt,
             prompt_style=prompt_style,
+            enable_thinking=enable_thinking,
         )
         _server._gen_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gen")
 

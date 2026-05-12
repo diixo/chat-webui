@@ -138,6 +138,47 @@ These same values are surfaced to the frontend via `/props.default_generation_se
 sampling param missing from a chat request body. To force greedy decoding for a
 single request, set `temperature: 0` in the body or in the UI's Generation tab.
 
+### Thinking / reasoning control
+
+Some models (e.g. Qwen3) support an `enable_thinking` flag in
+`apply_chat_template`. When set to `False`, the model skips the internal
+`<think>…</think>` chain-of-thought block and answers directly — faster and
+more token-efficient for structured tasks like classification or fact
+extraction.
+
+There are three ways to control it, applied in priority order (highest first):
+
+**1. Per-request — request body** (overrides everything):
+
+```json
+{ "enable_thinking": false }
+```
+
+**2. Per-request — Python API** (`UIServer.chat.completions.create()`):
+
+```python
+result = ui.chat.completions.create(
+    messages=[{"role": "user", "content": "..."}],
+    enable_thinking=False,
+    temperature=0.0,
+)
+```
+
+**3. Server-level default — `UIServer` constructor** (applies to all browser
+requests that don't set the flag explicitly):
+
+```python
+ui = UIServer(
+    model="models/Qwen3-1.7B",
+    enable_thinking=False,   # disable thinking for all responses
+)
+```
+
+`None` (default at every level) leaves the tokenizer template's own default
+unchanged. The flag flows through `configure()` → `ARGS.enable_thinking` →
+`chat_completions()` → `stream_completion()` / `_build_prompt()` →
+`apply_chat_template(..., enable_thinking=False)`.
+
 ---
 
 ## Add model locally
@@ -352,6 +393,101 @@ Model loaded. Running 43 test cases...
 [PASS] create bug: ABS sensor returns zero speed at vehicle start
 ...
 Results: 43/43 passed — all passed!
+```
+
+---
+
+## After-response callback
+
+`register_after_response(fn)` is a lightweight server hook that lets you
+run custom logic after every completed chat turn — without modifying the
+server internals or adding HTTP middleware.
+
+```python
+import server as _server
+
+def on_reply(user_msg: str, assistant_reply: str) -> None:
+    print(f"User said: {user_msg}")
+    print(f"Model replied: {assistant_reply}")
+
+_server.register_after_response(on_reply)
+```
+
+The callback is fired in a **daemon thread** after the response has been
+fully delivered to the client (after `[DONE]` for streaming, after
+`JSONResponse` for non-streaming). The function receives two strings:
+
+| Argument | Content |
+|---|---|
+| `user_msg` | Last user message text from the request |
+| `assistant_reply` | Assistant content text (reasoning tokens excluded) |
+
+Registering is safe at any point before `ui.run()`. Only one callback can
+be active at a time — calling `register_after_response` again replaces the
+previous one.
+
+**No recursion risk**: the callback is fired only from `chat_completions()`
+handler, not from every HTTP request. Calls made inside the callback via
+`UIServer.chat.completions.create()` go through a separate ASGI transport
+and do not re-trigger the callback.
+
+---
+
+## Memory-aware assistant
+
+`examples/assistant_app.py` demonstrates a pattern where the assistant
+**remembers facts** stated by the user across turns and uses them when
+answering later questions. It is built on top of `register_after_response`.
+
+### How it works
+
+1. After every assistant reply, a background thread runs a second LLM call
+   (the *extraction pass*) that asks the model to return a JSON array of
+   concrete facts from that turn.
+2. Extracted facts accumulate in a module-level `FACTS: list[str]`.
+3. `ARGS.system_prompt` is updated with the current fact list, so every
+   subsequent request already sees them as context.
+
+```
+User: "My name is Alice and I have a dog named Rex"
+→ model replies
+→ [background] extraction call → ["User's name is Alice", "User has a dog named Rex"]
+→ FACTS updated, system prompt updated
+
+User: "What's my pet's name?"
+→ system prompt now contains Known facts → model answers "Rex"
+```
+
+The registration is three lines:
+
+```python
+_server.register_after_response(
+    lambda user, reply: threading.Thread(
+        target=_run_extraction, args=(user, reply, ui), daemon=True
+    ).start()
+)
+```
+
+### Implementation details
+
+| Concern | Solution |
+|---|---|
+| Hook into responses | `register_after_response` callback — no middleware needed |
+| Extraction call | `ui.chat.completions.create()` with `temperature=0`, `enable_thinking=False` |
+| Thinking tokens suppressed | `enable_thinking=False` — extraction call never generates `<think>` blocks |
+| Thread safety | `threading.Lock` around `FACTS`; `ARGS.system_prompt` assignment is atomic in CPython |
+
+### Running
+
+```bash
+python examples/assistant_app.py
+```
+
+Extracted facts are printed to the console as they accumulate:
+
+```
+[memory] +2 fact(s): ["User's name is Alice", "User has a dog named Rex"]
+[memory] total facts (2): ["User's name is Alice", "User has a dog named Rex"]
 ```
 
 ---
