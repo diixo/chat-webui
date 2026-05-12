@@ -27,11 +27,12 @@ import asyncio
 import json
 import logging
 import re
+import threading
 import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Callable
 
 import torch
 import uvicorn
@@ -77,6 +78,45 @@ def register_tooling(obj: AgentTooling) -> None:
             f"register_tooling: expected AgentTooling subclass, got {type(obj).__name__}"
         )
     _tooling = obj
+
+
+# ---------------------------------------------------------------------------
+# After-response callback registry
+#
+# Call register_after_response(fn) to receive (user_msg, assistant_reply)
+# after every completed chat turn. fn is called in a daemon thread so it
+# must not rely on the request context but can safely call back into the
+# server via UIServer.chat.completions.create().
+# ---------------------------------------------------------------------------
+
+_after_response: Callable[[str, str], None] | None = None
+
+
+def register_after_response(fn: Callable[[str, str], None]) -> None:
+    """Register a callback invoked after each chat completion.
+
+    fn(user_msg: str, assistant_reply: str) is called in a daemon thread
+    after the response has been fully sent to the client.
+    """
+    global _after_response
+    _after_response = fn
+
+
+def _fire_after_response(messages: list[dict], reply: str) -> None:
+    """Extract the last user message and fire the callback in a daemon thread."""
+    if _after_response is None or not reply:
+        return
+    user_msg: Any = next(
+        (m.get("content", "") for m in reversed(messages) if m.get("role") == "user"),
+        "",
+    )
+    if isinstance(user_msg, list):
+        user_msg = " ".join(
+            p.get("text", "") for p in user_msg
+            if isinstance(p, dict) and p.get("type") == "text"
+        )
+    if user_msg:
+        threading.Thread(target=_after_response, args=(user_msg, reply), daemon=True).start()
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -128,6 +168,7 @@ ARGS = argparse.Namespace(
     max_history=0,
     system_prompt=None,
     prompt_style="auto",
+    enable_thinking=None,  # None = use model template default
 )
 
 
@@ -142,6 +183,7 @@ def configure(
     max_history: int = 0,
     system_prompt: str | None = None,
     prompt_style: str = "auto",
+    enable_thinking: bool | None = None,
 ) -> None:
     """Configure the server when used as a library (instead of CLI args).
 
@@ -165,6 +207,7 @@ def configure(
     ARGS.max_history = max_history
     ARGS.system_prompt = system_prompt
     ARGS.prompt_style = prompt_style
+    ARGS.enable_thinking = enable_thinking
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -282,7 +325,8 @@ def load_model() -> None:
     _model = AutoModelForCausalLM.from_pretrained(
         model_path,
         device_map=ARGS.device,
-        dtype=torch_dtype,
+        torch_dtype=torch_dtype,
+        low_cpu_mem_usage=True,
         trust_remote_code=ARGS.trust_remote_code,
     )
     _model.eval()
@@ -379,21 +423,29 @@ def _normalise_messages(raw: list[dict]) -> list[dict]:
     return out
 
 
-def _build_prompt(messages: list[dict]) -> str:
+def _build_prompt(messages: list[dict], enable_thinking: bool | None = None) -> str:
     """Apply the tokenizer's chat template, or fall back to ChatML-like format.
 
     For base models without a chat template (e.g. GPT-2), use prompt_style="raw"
     to skip role markers and just concatenate message contents.
+
+    enable_thinking: when explicitly False, passes enable_thinking=False to
+    apply_chat_template (suppresses <think> blocks on models like Qwen3).
+    None leaves the template default unchanged.
     """
     if ARGS.prompt_style == "raw":
         return "\n".join(m["content"] for m in messages) + "\n"
 
     if hasattr(_tokenizer, "apply_chat_template") and _tokenizer.chat_template:
         try:
+            kwargs: dict = {}
+            if enable_thinking is not None:
+                kwargs["enable_thinking"] = enable_thinking
             return _tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=True,
+                **kwargs,
             )
         except Exception:
             log.warning("apply_chat_template failed — using fallback:\n%s",
@@ -614,6 +666,7 @@ async def stream_completion(
     top_k: int,
     repetition_penalty: float,
     parse_reasoning: bool = True,
+    enable_thinking: bool | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Yield SSE-formatted lines for a streaming chat completion.
@@ -621,7 +674,7 @@ async def stream_completion(
     Format matches the llama.cpp / OpenAI streaming API so the web-UI
     frontend works unchanged.
     """
-    prompt = _build_prompt(messages)
+    prompt = _build_prompt(messages, enable_thinking=enable_thinking)
     inputs = _tokenizer(
         prompt,
         return_tensors="pt",
@@ -704,19 +757,25 @@ async def stream_completion(
         ]
 
     predicted_n = 0
+    reply_parts: list[str] = []
     async for token in _iter_streamer(streamer):
         if not token:
             continue
         predicted_n += 1
         if parser is None:
             yield _chunk({"content": token})
+            reply_parts.append(token)
         else:
-            for sse in _emit_parsed(parser.feed(token)):
+            parts = parser.feed(token)
+            for sse in _emit_parsed(parts):
                 yield sse
+            reply_parts.extend(t for k, t in parts if k == "content")
 
     if parser is not None:
-        for sse in _emit_parsed(parser.flush()):
+        flush_parts = parser.flush()
+        for sse in _emit_parsed(flush_parts):
             yield sse
+        reply_parts.extend(t for k, t in flush_parts if k == "content")
 
     # Drain any remaining exception from the generation thread
     try:
@@ -736,6 +795,7 @@ async def stream_completion(
         },
     )
     yield "data: [DONE]\n\n"
+    _fire_after_response(messages, "".join(reply_parts))
 
 # ---------------------------------------------------------------------------
 # Intent classification + tool dispatch
@@ -1019,6 +1079,8 @@ async def chat_completions(request: Request) -> Any:
     # Frontend sends "auto" by default; "none" means render reasoning inline
     # as part of the regular content (useful for debugging).
     parse_reasoning: bool = body.get("reasoning_format", "auto") != "none"
+    # Request body takes precedence; fall back to server-level default from configure().
+    enable_thinking: bool | None = body.get("enable_thinking", getattr(ARGS, "enable_thinking", None))
 
     # Warmup / pre-encode request (n_predict=0 from ChatService.preEncode)
     if max_tokens == 0:
@@ -1068,13 +1130,14 @@ async def chat_completions(request: Request) -> Any:
                 top_k=top_k,
                 repetition_penalty=rep_penalty,
                 parse_reasoning=parse_reasoning,
+                enable_thinking=enable_thinking,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     # Non-streaming path (always used when tools are present)
-    prompt = _build_prompt(messages)
+    prompt = _build_prompt(messages, enable_thinking=enable_thinking)
     inputs = _tokenizer(
         prompt,
         return_tensors="pt",
@@ -1171,6 +1234,8 @@ async def chat_completions(request: Request) -> Any:
     message: dict[str, Any] = {"role": "assistant", "content": content_text}
     if reasoning_text:
         message["reasoning_content"] = reasoning_text
+
+    _fire_after_response(messages, content_text)
 
     return JSONResponse({
         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
