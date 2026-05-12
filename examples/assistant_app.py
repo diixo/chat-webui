@@ -27,6 +27,7 @@ from ui_server import UIServer
 
 FACTS: list[str] = []
 _lock = threading.Lock()
+_stop_event = threading.Event()
 _EXTRACTION_QUEUE_MAXSIZE = 16
 _extraction_queue: queue.Queue[tuple[str, str] | None] = queue.Queue(
     maxsize=_EXTRACTION_QUEUE_MAXSIZE
@@ -52,28 +53,32 @@ Assistant: {assistant}
 JSON array of new facts:"""
 
 
-def _current_system_prompt() -> str:
-    with _lock:
-        if not FACTS:
-            return _BASE_PROMPT
-        facts_block = "\n".join(f"- {f}" for f in FACTS)
-        return f"{_BASE_PROMPT}\n\nKnown facts about the user:\n{facts_block}"
+def _render_system_prompt(facts: list[str]) -> str:
+    if not facts:
+        return _BASE_PROMPT
+    facts_block = "\n".join(f"- {f}" for f in facts)
+    return f"{_BASE_PROMPT}\n\nKnown facts about the user:\n{facts_block}"
+
 
 
 def _run_extraction(user_msg: str, assistant_reply: str, ui: UIServer) -> None:
     try:
-        result = ui.chat.completions.create(
-            messages=[{
-                "role": "user",
-                "content": _EXTRACTION_PROMPT.format(
-                    user=user_msg,
-                    assistant=assistant_reply,
-                ),
-            }],
-            temperature=0.0,
-            max_tokens=256,
-            enable_thinking=False,
-        )
+        with _server.suppress_after_response():
+            result = ui.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _EXTRACTION_PROMPT.format(
+                            user=user_msg,
+                            assistant=assistant_reply,
+                        ),
+                    }
+                ],
+                temperature=0.0,
+                max_tokens=256,
+                enable_thinking=False,
+                suppress_after_response=True,
+            )
         raw = result.choices[0].message.content or "[]"
         start, end = raw.find("["), raw.rfind("]") + 1
         if 0 <= start < end:
@@ -87,27 +92,43 @@ def _run_extraction(user_msg: str, assistant_reply: str, ui: UIServer) -> None:
                             if f not in FACTS:
                                 FACTS.append(f)
                                 new_added.append(f)
+                    system_prompt = _render_system_prompt(list(FACTS))
                 if new_added:
                     print(f"[memory] +{len(new_added)} fact(s): {new_added}", flush=True)
                     print(f"[memory] total facts ({len(FACTS)}): {FACTS}", flush=True)
-        _server.ARGS.system_prompt = _current_system_prompt()
+                _server.ARGS.system_prompt = system_prompt
     except Exception as exc:
         print(f"[memory] extraction error: {exc}", flush=True)
 
 
 def _extraction_worker(ui: UIServer) -> None:
-    while True:
-        item = _extraction_queue.get()
+    while not _stop_event.is_set():
         try:
+            item = _extraction_queue.get(timeout=1.0)
             if item is None:
+                return
+            if _stop_event.is_set():
                 return
             user_msg, assistant_reply = item
             _run_extraction(user_msg, assistant_reply, ui)
-        finally:
-            _extraction_queue.task_done()
+        except queue.Empty:
+            continue
+        except Exception:
+            try:
+                _extraction_queue.task_done()
+            except ValueError:
+                pass
+        else:
+            try:
+                _extraction_queue.task_done()
+            except ValueError:
+                pass
 
 
 def _enqueue_extraction(user_msg: str, assistant_reply: str) -> None:
+    if _stop_event.is_set():
+        return
+
     try:
         _extraction_queue.put_nowait((user_msg, assistant_reply))
         return
@@ -142,10 +163,28 @@ if __name__ == "__main__":
         device="cuda" if _server.torch.cuda.is_available() else "cpu",
     )
 
-    threading.Thread(target=_extraction_worker, args=(ui,), daemon=True).start()
+    worker_thread = threading.Thread(target=_extraction_worker, args=(ui,), daemon=False)
+    worker_thread.start()
 
     _server.register_after_response(
         _enqueue_extraction
     )
 
-    ui.run()
+    try:
+        ui.run()
+    except KeyboardInterrupt:
+        print("\n[memory] shutting down gracefully...", flush=True)
+        _stop_event.set()
+
+        # Drop pending extraction work so shutdown is not delayed.
+        while True:
+            try:
+                _extraction_queue.get_nowait()
+                _extraction_queue.task_done()
+            except queue.Empty:
+                break
+
+        _extraction_queue.put_nowait(None)  # Signal worker to stop
+        worker_thread.join(timeout=5.0)  # Wait for worker to finish
+        if worker_thread.is_alive():
+            print("[memory] worker thread did not stop in time", flush=True)

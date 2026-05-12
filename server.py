@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextvars
 import json
 import logging
 import re
@@ -31,6 +32,7 @@ import threading
 import time
 import traceback
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator, Callable
 
@@ -91,6 +93,23 @@ def register_tooling(obj: AgentTooling) -> None:
 
 _after_response: Callable[[str, str], None] | None = None
 _AFTER_RESPONSE_REPLY_MAX_CHARS = 16000
+_suppress_after_response_context: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "suppress_after_response_depth", default=0
+)
+
+
+@contextmanager
+def suppress_after_response() -> Any:
+    """Disable after-response callbacks for the current context.
+
+    Uses contextvars so suppression is visible across threads and async boundaries.
+    """
+    depth = _suppress_after_response_context.get()
+    token = _suppress_after_response_context.set(depth + 1)
+    try:
+        yield
+    finally:
+        _suppress_after_response_context.reset(token)
 
 
 def register_after_response(fn: Callable[[str, str], None]) -> None:
@@ -103,9 +122,18 @@ def register_after_response(fn: Callable[[str, str], None]) -> None:
     _after_response = fn
 
 
-def _fire_after_response(messages: list[dict], reply: str) -> None:
+def _fire_after_response(
+    messages: list[dict],
+    reply: str,
+    suppress_after_response: bool = False,
+) -> None:
     """Extract the last user message and fire the callback in a daemon thread."""
-    if _after_response is None or not reply:
+    if (
+        _after_response is None
+        or not reply
+        or suppress_after_response
+        or _suppress_after_response_context.get() > 0
+    ):
         return
     reply = reply[:_AFTER_RESPONSE_REPLY_MAX_CHARS]
     user_msg: Any = next(
@@ -318,7 +346,7 @@ def load_model() -> None:
         "float32": torch.float32,
         "auto": "auto",
     }
-    torch_dtype = dtype_map[ARGS.dtype]
+    model_dtype = dtype_map[ARGS.dtype]
 
     log.info(
         "Loading model: %s  (dtype=%s, device=%s)",
@@ -327,7 +355,7 @@ def load_model() -> None:
     _model = AutoModelForCausalLM.from_pretrained(
         model_path,
         device_map=ARGS.device,
-        torch_dtype=torch_dtype,
+        dtype=model_dtype,
         low_cpu_mem_usage=True,
         trust_remote_code=ARGS.trust_remote_code,
     )
@@ -669,6 +697,7 @@ async def stream_completion(
     repetition_penalty: float,
     parse_reasoning: bool = True,
     enable_thinking: bool | None = None,
+    suppress_after_response: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
     Yield SSE-formatted lines for a streaming chat completion.
@@ -706,18 +735,20 @@ async def stream_completion(
         skip_prompt=True,
         skip_special_tokens=True,
     )
+    do_sample = temperature > 1e-4
     gen_kwargs: dict[str, Any] = {
         **inputs_on_device,
         "streamer": streamer,
         "max_new_tokens": min(max_new_tokens, ARGS.context_size - prompt_tokens),
-        "do_sample": temperature > 1e-4,
-        "temperature": max(temperature, 1e-7),
-        "top_p": top_p,
+        "do_sample": do_sample,
         "repetition_penalty": repetition_penalty,
         "pad_token_id": _tokenizer.pad_token_id,
         "eos_token_id": _tokenizer.eos_token_id,
     }
-    if top_k > 0:
+    if do_sample:
+        gen_kwargs["temperature"] = max(temperature, 1e-7)
+        gen_kwargs["top_p"] = top_p
+    if do_sample and top_k > 0:
         gen_kwargs["top_k"] = top_k
 
     cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
@@ -812,7 +843,11 @@ async def stream_completion(
         },
     )
     yield "data: [DONE]\n\n"
-    _fire_after_response(messages, "".join(reply_parts))
+    _fire_after_response(
+        messages,
+        "".join(reply_parts),
+        suppress_after_response=suppress_after_response,
+    )
 
 # ---------------------------------------------------------------------------
 # Intent classification + tool dispatch
@@ -1093,6 +1128,7 @@ async def chat_completions(request: Request) -> Any:
     top_p: float = float(body.get("top_p", DEFAULT_GEN_PARAMS["top_p"]))
     top_k: int = int(body.get("top_k", DEFAULT_GEN_PARAMS["top_k"]))
     rep_penalty: float = float(body.get("repeat_penalty", DEFAULT_GEN_PARAMS["repeat_penalty"]))
+    suppress_after_response: bool = bool(body.get("suppress_after_response", False))
     # Frontend sends "auto" by default; "none" means render reasoning inline
     # as part of the regular content (useful for debugging).
     parse_reasoning: bool = body.get("reasoning_format", "auto") != "none"
@@ -1148,6 +1184,7 @@ async def chat_completions(request: Request) -> Any:
                 repetition_penalty=rep_penalty,
                 parse_reasoning=parse_reasoning,
                 enable_thinking=enable_thinking,
+                suppress_after_response=suppress_after_response,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -1178,17 +1215,19 @@ async def chat_completions(request: Request) -> Any:
         )
 
     inputs_on_device = {k: v.to(_model_device) for k, v in inputs.items()}
+    do_sample = temperature > 1e-4
     gen_kwargs: dict[str, Any] = {
         **inputs_on_device,
         "max_new_tokens": min(max_tokens, ARGS.context_size - prompt_tokens),
-        "do_sample": temperature > 1e-4,
-        "temperature": max(temperature, 1e-7),
-        "top_p": top_p,
+        "do_sample": do_sample,
         "repetition_penalty": rep_penalty,
         "pad_token_id": _tokenizer.pad_token_id,
         "eos_token_id": _tokenizer.eos_token_id,
     }
-    if top_k > 0:
+    if do_sample:
+        gen_kwargs["temperature"] = max(temperature, 1e-7)
+        gen_kwargs["top_p"] = top_p
+    if do_sample and top_k > 0:
         gen_kwargs["top_k"] = top_k
 
     loop = asyncio.get_event_loop()
@@ -1252,7 +1291,11 @@ async def chat_completions(request: Request) -> Any:
     if reasoning_text:
         message["reasoning_content"] = reasoning_text
 
-    _fire_after_response(messages, content_text)
+    _fire_after_response(
+        messages,
+        content_text,
+        suppress_after_response=suppress_after_response,
+    )
 
     return JSONResponse({
         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
