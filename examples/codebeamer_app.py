@@ -1,12 +1,12 @@
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
 from pybeamer import Codebeamer
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ui_server import UIServer
 
