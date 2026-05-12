@@ -11,9 +11,9 @@ Usage:
 """
 
 import json
-import queue
 import sys
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -26,12 +26,17 @@ from ui_server import UIServer
 # ---------------------------------------------------------------------------
 
 FACTS: list[str] = []
-_lock = threading.Lock()
-_stop_event = threading.Event()
-_EXTRACTION_QUEUE_MAXSIZE = 16
-_extraction_queue: queue.Queue[tuple[str, str] | None] = queue.Queue(
-    maxsize=_EXTRACTION_QUEUE_MAXSIZE
-)
+_facts_lock = threading.Lock()
+
+# Extraction concurrency:
+#   - One worker thread via ThreadPoolExecutor(max_workers=1).
+#   - At most one buffered "latest" turn in _pending.
+#   - If extraction is already running when a new turn arrives, _pending is
+#     overwritten (we only care about the most recent context).
+_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="extraction")
+_state_lock = threading.Lock()
+_in_flight: "Future[None] | None" = None
+_pending: "tuple[str, str] | None" = None
 
 _BASE_PROMPT = (
     "You are a helpful assistant with memory. "
@@ -60,32 +65,30 @@ def _render_system_prompt(facts: list[str]) -> str:
     return f"{_BASE_PROMPT}\n\nKnown facts about the user:\n{facts_block}"
 
 
-
 def _run_extraction(user_msg: str, assistant_reply: str, ui: UIServer) -> None:
     try:
-        with _server.suppress_after_response():
-            result = ui.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": _EXTRACTION_PROMPT.format(
-                            user=user_msg,
-                            assistant=assistant_reply,
-                        ),
-                    }
-                ],
-                temperature=0.0,
-                max_tokens=256,
-                enable_thinking=False,
-                suppress_after_response=True,
-            )
+        result = ui.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": _EXTRACTION_PROMPT.format(
+                        user=user_msg,
+                        assistant=assistant_reply,
+                    ),
+                }
+            ],
+            temperature=0.0,
+            max_tokens=256,
+            enable_thinking=False,
+            suppress_after_response=True,
+        )
         raw = result.choices[0].message.content or "[]"
         start, end = raw.find("["), raw.rfind("]") + 1
         if 0 <= start < end:
             new_facts: list = json.loads(raw[start:end])
             if isinstance(new_facts, list):
                 new_added = []
-                with _lock:
+                with _facts_lock:
                     for fact in new_facts:
                         if isinstance(fact, str) and fact.strip():
                             f = fact.strip()
@@ -101,51 +104,36 @@ def _run_extraction(user_msg: str, assistant_reply: str, ui: UIServer) -> None:
         print(f"[memory] extraction error: {exc}", flush=True)
 
 
-def _extraction_worker(ui: UIServer) -> None:
-    while not _stop_event.is_set():
-        try:
-            item = _extraction_queue.get(timeout=1.0)
-            if item is None:
-                return
-            if _stop_event.is_set():
-                return
-            user_msg, assistant_reply = item
-            _run_extraction(user_msg, assistant_reply, ui)
-        except queue.Empty:
-            continue
-        except Exception:
-            try:
-                _extraction_queue.task_done()
-            except ValueError:
-                pass
-        else:
-            try:
-                _extraction_queue.task_done()
-            except ValueError:
-                pass
+def _submit_extraction(user_msg: str, assistant_reply: str, ui: UIServer) -> "Future[None]":
+    """Submit extraction and chain the pending turn on completion."""
+    global _in_flight, _pending
+
+    def _on_done(fut: "Future[None]") -> None:
+        global _in_flight, _pending
+        with _state_lock:
+            item = _pending
+            _pending = None
+            if item is not None:
+                _in_flight = _submit_extraction(item[0], item[1], ui)
+            else:
+                _in_flight = None
+
+    f: Future[None] = _executor.submit(_run_extraction, user_msg, assistant_reply, ui)
+    f.add_done_callback(_on_done)
+    return f
 
 
-def _enqueue_extraction(user_msg: str, assistant_reply: str) -> None:
-    if _stop_event.is_set():
-        return
-
-    try:
-        _extraction_queue.put_nowait((user_msg, assistant_reply))
-        return
-    except queue.Full:
-        # Keep recent turns when extraction lags behind.
-        pass
-
-    try:
-        _extraction_queue.get_nowait()
-        _extraction_queue.task_done()
-    except queue.Empty:
-        pass
-
-    try:
-        _extraction_queue.put_nowait((user_msg, assistant_reply))
-    except queue.Full:
-        print("[memory] extraction queue is full; skipping turn", flush=True)
+def _make_enqueue(ui: UIServer):
+    """Return an after-response callback that schedules extraction via the executor."""
+    def _enqueue(user_msg: str, assistant_reply: str) -> None:
+        global _in_flight, _pending
+        with _state_lock:
+            if _in_flight is None or _in_flight.done():
+                _in_flight = _submit_extraction(user_msg, assistant_reply, ui)
+            else:
+                # Overwrite: keep only the latest pending turn
+                _pending = (user_msg, assistant_reply)
+    return _enqueue
 
 
 # ---------------------------------------------------------------------------
@@ -163,28 +151,10 @@ if __name__ == "__main__":
         device="cuda" if _server.torch.cuda.is_available() else "cpu",
     )
 
-    worker_thread = threading.Thread(target=_extraction_worker, args=(ui,), daemon=False)
-    worker_thread.start()
-
-    _server.register_after_response(
-        _enqueue_extraction
-    )
+    _server.register_after_response(_make_enqueue(ui))
 
     try:
         ui.run()
     except KeyboardInterrupt:
         print("\n[memory] shutting down gracefully...", flush=True)
-        _stop_event.set()
-
-        # Drop pending extraction work so shutdown is not delayed.
-        while True:
-            try:
-                _extraction_queue.get_nowait()
-                _extraction_queue.task_done()
-            except queue.Empty:
-                break
-
-        _extraction_queue.put_nowait(None)  # Signal worker to stop
-        worker_thread.join(timeout=5.0)  # Wait for worker to finish
-        if worker_thread.is_alive():
-            print("[memory] worker thread did not stop in time", flush=True)
+        _executor.shutdown(wait=False, cancel_futures=True)
