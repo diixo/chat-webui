@@ -90,6 +90,7 @@ def register_tooling(obj: AgentTooling) -> None:
 # ---------------------------------------------------------------------------
 
 _after_response: Callable[[str, str], None] | None = None
+_AFTER_RESPONSE_REPLY_MAX_CHARS = 16000
 
 
 def register_after_response(fn: Callable[[str, str], None]) -> None:
@@ -106,6 +107,7 @@ def _fire_after_response(messages: list[dict], reply: str) -> None:
     """Extract the last user message and fire the callback in a daemon thread."""
     if _after_response is None or not reply:
         return
+    reply = reply[:_AFTER_RESPONSE_REPLY_MAX_CHARS]
     user_msg: Any = next(
         (m.get("content", "") for m in reversed(messages) if m.get("role") == "user"),
         "",
@@ -758,24 +760,39 @@ async def stream_completion(
 
     predicted_n = 0
     reply_parts: list[str] = []
+    reply_chars_left = _AFTER_RESPONSE_REPLY_MAX_CHARS
+
+    def _capture_reply(text: str) -> None:
+        nonlocal reply_chars_left
+        if not text or reply_chars_left <= 0:
+            return
+        piece = text[:reply_chars_left]
+        if piece:
+            reply_parts.append(piece)
+            reply_chars_left -= len(piece)
+
     async for token in _iter_streamer(streamer):
         if not token:
             continue
         predicted_n += 1
         if parser is None:
             yield _chunk({"content": token})
-            reply_parts.append(token)
+            _capture_reply(token)
         else:
             parts = parser.feed(token)
             for sse in _emit_parsed(parts):
                 yield sse
-            reply_parts.extend(t for k, t in parts if k == "content")
+            for kind, text in parts:
+                if kind == "content":
+                    _capture_reply(text)
 
     if parser is not None:
         flush_parts = parser.flush()
         for sse in _emit_parsed(flush_parts):
             yield sse
-        reply_parts.extend(t for k, t in flush_parts if k == "content")
+        for kind, text in flush_parts:
+            if kind == "content":
+                _capture_reply(text)
 
     # Drain any remaining exception from the generation thread
     try:
