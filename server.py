@@ -91,6 +91,7 @@ def register_tooling(obj: AgentTooling) -> None:
 
 _after_response: Callable[[str, str], None] | None = None
 _AFTER_RESPONSE_REPLY_MAX_CHARS = 16000
+_response_postprocessor: Callable[[str], str] | None = None
 
 def register_after_response(fn: Callable[[str, str], None]) -> None:
     """Register a callback invoked after each chat completion.
@@ -100,6 +101,27 @@ def register_after_response(fn: Callable[[str, str], None]) -> None:
     """
     global _after_response
     _after_response = fn
+
+
+def register_response_postprocessor(fn: Callable[[str], str] | None) -> None:
+    """Register a function that rewrites assistant text before sending to clients.
+
+    The after-response callback still receives the raw model reply.
+    """
+    global _response_postprocessor
+    _response_postprocessor = fn
+
+
+def _apply_response_postprocessor(reply: str) -> str:
+    if _response_postprocessor is None or not reply:
+        return reply
+    try:
+        processed = _response_postprocessor(reply)
+        if isinstance(processed, str) and processed.strip():
+            return processed
+    except Exception:
+        log.exception("Response postprocessor failed; using raw reply")
+    return reply
 
 
 def _fire_after_response(
@@ -757,6 +779,7 @@ async def stream_completion(
     )
 
     parser = _ThinkingParser() if parse_reasoning else None
+    postprocess_for_client = _response_postprocessor is not None
 
     def _emit_parsed(parts: list[tuple[str, str]]) -> list[str]:
         return [
@@ -782,29 +805,36 @@ async def stream_completion(
             continue
         predicted_n += 1
         if parser is None:
-            yield _chunk({"content": token})
             _capture_reply(token)
+            if not postprocess_for_client:
+                yield _chunk({"content": token})
         else:
             parts = parser.feed(token)
-            for sse in _emit_parsed(parts):
-                yield sse
             for kind, text in parts:
                 if kind == "content":
                     _capture_reply(text)
+            if not postprocess_for_client:
+                for sse in _emit_parsed(parts):
+                    yield sse
 
     if parser is not None:
         flush_parts = parser.flush()
-        for sse in _emit_parsed(flush_parts):
-            yield sse
         for kind, text in flush_parts:
             if kind == "content":
                 _capture_reply(text)
+        if not postprocess_for_client:
+            for sse in _emit_parsed(flush_parts):
+                yield sse
 
     # Drain any remaining exception from the generation thread
     try:
         await asyncio.wait_for(asyncio.shield(gen_future), timeout=10.0)
     except (asyncio.TimeoutError, Exception) as exc:
         log.error("Generation thread error: %s", exc)
+
+    raw_reply = "".join(reply_parts)
+    if postprocess_for_client:
+        yield _chunk({"content": _apply_response_postprocessor(raw_reply)})
 
     elapsed_ms = (time.perf_counter() - t_start) * 1000
     yield _chunk(
@@ -820,7 +850,7 @@ async def stream_completion(
     yield "data: [DONE]\n\n"
     _fire_after_response(
         messages,
-        "".join(reply_parts),
+        raw_reply,
         suppress_after_response=suppress_after_response,
     )
 
@@ -1262,13 +1292,15 @@ async def chat_completions(request: Request) -> Any:
         content_text = "".join(t for k, t in parts if k == "content")
         reasoning_text = "".join(t for k, t in parts if k == "reasoning")
 
-    message: dict[str, Any] = {"role": "assistant", "content": content_text}
+    raw_content_text = content_text
+    client_content_text = _apply_response_postprocessor(raw_content_text)
+    message: dict[str, Any] = {"role": "assistant", "content": client_content_text}
     if reasoning_text:
         message["reasoning_content"] = reasoning_text
 
     _fire_after_response(
         messages,
-        content_text,
+        raw_content_text,
         suppress_after_response=suppress_after_response,
     )
 
