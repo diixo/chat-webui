@@ -181,6 +181,91 @@ unchanged. The flag flows through `configure()` → `ARGS.enable_thinking` →
 
 ---
 
+## Response callbacks and postprocessing
+
+The server supports two independent mechanisms for intercepting and transforming chat responses:
+
+### 1. **Response Postprocessor** — transform reply *before* sending to client
+
+Register a function that rewrites the model's output before it reaches the UI.
+The callback receives the **raw model reply** but the client sees the **transformed version**.
+
+Use case: **One-call JSON contracts** where the model returns structured data (e.g. `{"answer": "...", "facts": [...]}`) but the UI should only display the `answer` field.
+
+```python
+import server as _server
+
+def _postprocess_reply(raw_reply: str) -> str:
+    """Extract answer field from one-call JSON response."""
+    obj = json.loads(raw_reply)
+    return obj.get("answer", raw_reply)
+
+_server.register_response_postprocessor(_postprocess_reply)
+```
+
+**Implementation:**
+- In streaming: `stream_completion()` collects raw reply, then calls postprocessor before yielding final chunk
+- In non-streaming: `chat_completions()` applies postprocessor to `content_text` before returning to client
+- The **raw** reply (before postprocessing) is always passed to `_fire_after_response()` callbacks
+
+### 2. **After-response callback** — process reply *after* it reaches client
+
+Register a callback that fires in a background daemon thread after a chat completion is fully sent.
+This callback receives the **raw model reply** (unaffected by any postprocessor).
+
+Use case: **Memory extraction** — parse the model's response to extract facts, entities, or other structured data asynchronously.
+
+```python
+import server as _server
+from concurrent.futures import ThreadPoolExecutor
+
+_executor = ThreadPoolExecutor(max_workers=1)
+
+def _extract_facts(user_msg: str, assistant_reply: str) -> None:
+    """Background task: parse reply and update memory."""
+    _, facts = parse_json(assistant_reply)
+    # ... update facts database ...
+
+_server.register_after_response(_extract_facts)
+```
+
+**Threading model:**
+- Callback runs in a **daemon thread** (does not block the request)
+- Safe to call back into the server (e.g. `ui.chat.completions.create()`)
+- Must not rely on the request context
+
+### Example: One-call memory assistant (`assistant_app_onecall.py`)
+
+Combines both mechanisms:
+
+```
+User message
+    ↓
+Model generates JSON: {"answer": "...", "facts": [...]}
+    ↓
+[Postprocessor extracts answer] → UI sees only the answer
+    ↓
+Response sent to client
+    ↓
+[After-response callback extracts facts] → Background memory update
+```
+
+**Register in this order:**
+
+```python
+_server.register_response_postprocessor(_postprocess_response_for_ui)
+_server.register_after_response(_on_response)
+
+ui.run()
+```
+
+This ensures:
+- UI gets clean, human-readable answers
+- Callback receives full JSON for parsing
+- Memory extraction happens asynchronously without blocking chat
+
+---
+
 ## Add model locally
 You should `pip install huggingface_hub` to download models from HuggingFace Hub:
 ```bash
