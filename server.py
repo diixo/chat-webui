@@ -745,6 +745,12 @@ async def stream_completion(
     if do_sample:
         gen_kwargs["temperature"] = max(temperature, 1e-7)
         gen_kwargs["top_p"] = top_p
+    else:
+        # Some models ship sampling params in generation_config; clear them in
+        # greedy mode to avoid HF warnings about ignored flags.
+        gen_kwargs["temperature"] = None
+        gen_kwargs["top_p"] = None
+        gen_kwargs["top_k"] = None
     if do_sample and top_k > 0:
         gen_kwargs["top_k"] = top_k
 
@@ -1232,6 +1238,12 @@ async def chat_completions(request: Request) -> Any:
     if do_sample:
         gen_kwargs["temperature"] = max(temperature, 1e-7)
         gen_kwargs["top_p"] = top_p
+    else:
+        # Some models ship sampling params in generation_config; clear them in
+        # greedy mode to avoid HF warnings about ignored flags.
+        gen_kwargs["temperature"] = None
+        gen_kwargs["top_p"] = None
+        gen_kwargs["top_k"] = None
     if do_sample and top_k > 0:
         gen_kwargs["top_k"] = top_k
 
