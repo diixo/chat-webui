@@ -24,22 +24,27 @@ from examples.assistant_app import (
     _args_lock,
     _facts_lock,
     _make_enqueue,
-    _render_system_prompt,
+    _current_system_prompt,
     _run_extraction,
 )
 
 
-def test_render_system_prompt_empty():
+def test_current_system_prompt_empty():
     """Empty facts should return base prompt."""
-    prompt = _render_system_prompt([])
+    with _facts_lock:
+        FACTS.clear()
+    prompt = _current_system_prompt()
     assert prompt == _BASE_PROMPT
     print("✓ render_system_prompt (empty)")
 
 
-def test_render_system_prompt_with_facts():
+def test_current_system_prompt_with_facts():
     """Facts should be formatted as bullet list."""
     facts = ["User's name is Alice", "User has a dog"]
-    prompt = _render_system_prompt(facts)
+    with _facts_lock:
+        FACTS.clear()
+        FACTS.extend(facts)
+    prompt = _current_system_prompt()
     
     assert _BASE_PROMPT in prompt
     assert "- User's name is Alice" in prompt
@@ -221,8 +226,8 @@ def test_run_extraction_ignores_reasoning_content_when_content_empty():
 if __name__ == "__main__":
     print("\n=== Testing assistant_app.py (two-call) ===\n")
     
-    test_render_system_prompt_empty()
-    test_render_system_prompt_with_facts()
+    test_current_system_prompt_empty()
+    test_current_system_prompt_with_facts()
     test_extraction_prompt_format()
     test_extraction_logic_valid_json()
     test_extraction_logic_empty_array()

@@ -28,6 +28,7 @@ from ui_server import UIServer
 
 FACTS: list[str] = []
 _facts_lock = threading.Lock()
+_args_lock = threading.Lock()
 
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fact-merger")
 _state_lock = threading.Lock()
@@ -53,6 +54,11 @@ def _render_system_prompt(facts: list[str]) -> str:
     else:
         facts_block = "\n".join(f"- {f}" for f in facts)
     return f"{_BASE_PROMPT}\n\nKnown facts:\n{facts_block}\n\n{_SYSTEM_INSTRUCTION}"
+
+
+def _current_system_prompt() -> str:
+    with _facts_lock:
+        return _render_system_prompt(list(FACTS))
 
 
 def _extract_json_object(raw: str) -> dict[str, Any] | None:
@@ -96,14 +102,18 @@ def _safe_parse_reply(raw: str) -> tuple[str, list[str]]:
     """Parse model reply: extract answer and facts, with safe fallback."""
     obj = _extract_json_object(raw)
     if obj is None:
+        preview = (raw or "").strip().replace("\n", " ")[:220]
+        print(f"[memory][warn] one-call JSON object not found; raw={preview!r}", flush=True)
         return (raw or "").strip(), []
 
     answer = obj.get("answer", "")
     facts = obj.get("facts", [])
 
     if not isinstance(answer, str):
+        print(f"[memory][warn] one-call answer is not a string: {type(answer).__name__}", flush=True)
         answer = str(answer) if answer else ""
     if not isinstance(facts, list):
+        print(f"[memory][warn] one-call facts is not a list: {type(facts).__name__}", flush=True)
         facts = []
 
     clean_facts: list[str] = []
@@ -114,6 +124,9 @@ def _safe_parse_reply(raw: str) -> tuple[str, list[str]]:
                 clean_facts.append(s)
 
     answer = answer.strip() or (raw or "").strip()
+    if not clean_facts:
+        preview = (raw or "").strip().replace("\n", " ")[:220]
+        print(f"[memory][debug] one-call facts empty; raw={preview!r}", flush=True)
     return answer, clean_facts
 
 
@@ -125,12 +138,15 @@ def _merge_facts_async(new_facts: list[str]) -> None:
             if fact not in FACTS:
                 FACTS.append(fact)
                 added.append(fact)
-        system_prompt = _render_system_prompt(list(FACTS))
+    system_prompt = _current_system_prompt()
 
     if added:
         print(f"[memory] +{len(added)} fact(s): {added}", flush=True)
         print(f"[memory] total facts ({len(FACTS)}): {FACTS}", flush=True)
-    _server.ARGS.system_prompt = system_prompt
+    else:
+        print(f"[memory][debug] one-call merge produced no new facts; total facts ({len(FACTS)}): {FACTS}", flush=True)
+    with _args_lock:
+        _server.ARGS.system_prompt = system_prompt
 
 
 def _submit_merge(new_facts: list[str]) -> "Future[None]":
@@ -167,6 +183,8 @@ def _enqueue_facts(new_facts: list[str]) -> None:
 
 def _on_response(user_msg: str, assistant_reply: str) -> None:
     """After-response callback: extract and parse facts from reply."""
+    preview = (assistant_reply or "").strip().replace("\n", " ")[:220]
+    print(f"[memory][debug] one-call raw reply preview: {preview!r}", flush=True)
     _, new_facts = _safe_parse_reply(assistant_reply)
     _enqueue_facts(new_facts)
 
