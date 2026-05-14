@@ -120,6 +120,9 @@ def test_callback_registration():
 def test_callback_invocation():
     """Callback should handle user_msg and assistant_reply."""
     mock_ui = MagicMock()
+    message = MagicMock(content="[]")
+    choice = MagicMock(message=message)
+    mock_ui.chat.completions.create.return_value = MagicMock(choices=[choice])
     callback = _make_enqueue(mock_ui)
     
     # Should not raise
@@ -153,10 +156,10 @@ def test_facts_accumulation_logic():
 
 def test_extraction_prompt_contains_instructions():
     """Extraction prompt should have clear instructions."""
-    assert "Extract concrete" in _EXTRACTION_PROMPT
+    assert "Extract ALL explicit facts" in _EXTRACTION_PROMPT
     assert "JSON array" in _EXTRACTION_PROMPT
-    assert "opinions" in _EXTRACTION_PROMPT
-    assert "PRIORITY" in _EXTRACTION_PROMPT
+    assert "Do NOT invent facts" in _EXTRACTION_PROMPT
+    assert "I want to sleep" in _EXTRACTION_PROMPT
     print("✓ extraction_prompt_contains_instructions")
 
 
@@ -181,8 +184,8 @@ def test_run_extraction_uses_dialog_and_adds_fact_from_content():
 
     call_kwargs = ui.chat.completions.create.call_args.kwargs
     prompt = call_kwargs["messages"][0]["content"]
-    assert "User: I live in Berlin" in prompt
-    assert "Assistant: Great city" in prompt
+    assert "User message: I live in Berlin" in prompt
+    assert "Assistant response: Great city" in prompt
 
     with _args_lock:
         _server.ARGS.system_prompt = original_prompt
@@ -190,8 +193,8 @@ def test_run_extraction_uses_dialog_and_adds_fact_from_content():
     print("✓ run_extraction uses dialog and adds fact from content")
 
 
-def test_run_extraction_fallbacks_to_reasoning_content():
-    """If content is empty, extraction should parse reasoning_content."""
+def test_run_extraction_ignores_reasoning_content_when_content_empty():
+    """Current extraction reads message.content only and falls back to []."""
     with _facts_lock:
         FACTS.clear()
 
@@ -207,12 +210,12 @@ def test_run_extraction_fallbacks_to_reasoning_content():
     _run_extraction("I have a cat", "Nice", ui)
 
     with _facts_lock:
-        assert "User has a cat" in FACTS
+        assert "User has a cat" not in FACTS
 
     with _args_lock:
         _server.ARGS.system_prompt = original_prompt
 
-    print("✓ run_extraction falls back to reasoning_content")
+    print("✓ run_extraction ignores reasoning_content when content is empty")
 
 
 if __name__ == "__main__":
@@ -229,6 +232,6 @@ if __name__ == "__main__":
     test_facts_accumulation_logic()
     test_extraction_prompt_contains_instructions()
     test_run_extraction_uses_dialog_and_adds_fact_from_content()
-    test_run_extraction_fallbacks_to_reasoning_content()
+    test_run_extraction_ignores_reasoning_content_when_content_empty()
     
     print("\n✓ All tests passed!\n")

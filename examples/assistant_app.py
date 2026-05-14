@@ -46,22 +46,29 @@ _BASE_PROMPT = (
 )
 
 _EXTRACTION_PROMPT = """\
-Extract concrete, objective facts from the user message and assistant response below.
-Return ONLY a JSON array of short fact strings.
-Return [] if there are no new facts worth remembering.
+You are a fact extraction expert. Extract ALL explicit facts about the user from their message.
 
-PRIORITY:
-1. Explicit facts stated by the USER (highest importance)
-2. Factual information in ASSISTANT's response
-3. Do NOT include: opinions, commands, questions, or meta-commentary
+From the user message, identify and extract:
+1. Personal information: name, age, location, family, pets, profession
+2. Explicit user statements: "I am X", "I want Y", "I have Z", "I like/dislike X"
+3. Health/state: "I feel X", "I'm tired", "I'm ok"
+4. Any concrete information the user shares about themselves
 
-Examples of good facts: ["User's name is Alice", "User has a dog named Rex", "User lives in Berlin"]
-Examples to exclude: ["User asked a question", "User wants help", "The assistant provided information"]
+IMPORTANT RULES:
+- Extract facts that are EXPLICITLY stated by the user
+- Do NOT invent facts
+- Do NOT include questions, requests without facts, or generic statements
+- Each fact should start with "User" and be 3-15 words
+- If user said "I want to sleep", output: "User wants to sleep"
+- If user said "I am ok", output: "User is ok"
 
-User: {user}
-Assistant: {assistant}
+Return ONLY a JSON array of fact strings. Example format:
+["User wants to sleep", "User is ok", "User's name is Alice"]
 
-JSON array of new facts:"""
+User message: {user}
+Assistant response: {assistant}
+
+JSON array (facts about the user):"""
 
 
 def _render_system_prompt(facts: list[str]) -> str:
@@ -73,79 +80,49 @@ def _render_system_prompt(facts: list[str]) -> str:
 
 def _run_extraction(user_msg: str, assistant_reply: str, ui: UIServer) -> None:
     try:
-        def _call_extraction(prompt: str, *, max_tokens: int = 256) -> str:
-            result = ui.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                max_tokens=max_tokens,
-                enable_thinking=False,
-                reasoning_format="none",
-                suppress_after_response=True,
-            )
-            msg = result.choices[0].message
-            content = (msg.content or "").strip()
-            reasoning_content = (getattr(msg, "reasoning_content", None) or "").strip()
-            print(
-                "[memory][debug] extraction reply fields: "
-                f"content_len={len(content)}, reasoning_len={len(reasoning_content)}",
-                flush=True,
-            )
-            if content:
-                return content
-            # Some models can place output in reasoning_content despite settings.
-            return reasoning_content or "[]"
-
-        raw = _call_extraction(
-            _EXTRACTION_PROMPT.format(user=user_msg, assistant=assistant_reply),
+        result = ui.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": _EXTRACTION_PROMPT.format(
+                        user=user_msg,
+                        assistant=assistant_reply,
+                    ),
+                }
+            ],
+            temperature=0.0,
             max_tokens=256,
+            enable_thinking=False,
+            suppress_after_response=True,
         )
+        raw = result.choices[0].message.content or "[]"
         start, end = raw.find("["), raw.rfind("]") + 1
-        if not (0 <= start < end):
-            preview = raw.strip().replace("\n", " ")[:220]
-            print(f"[memory][warn] extraction JSON array not found; raw={preview!r}", flush=True)
-            return
-
-        try:
+        if 0 <= start < end:
             new_facts: list = json.loads(raw[start:end])
-            print(f"[memory] extracted facts: {new_facts}", flush=True)
-        except json.JSONDecodeError as exc:
-            preview = raw[start:end].replace("\n", " ")[:220]
-            print(f"[memory][warn] extraction JSON parse failed: {exc}; payload={preview!r}", flush=True)
-            return
-
-        if not isinstance(new_facts, list):
-            print(f"[memory][warn] extraction payload is not a list: {type(new_facts).__name__}", flush=True)
-            return
-
-        if not new_facts:
-            preview = raw.strip().replace("\n", " ")[:160]
-            print(f"[memory][debug] extraction returned empty array; raw={preview!r}", flush=True)
-
-        new_added = []
-        with _facts_lock:
-            for fact in new_facts:
-                if isinstance(fact, str) and fact.strip():
-                    f = fact.strip()
-                    if f not in FACTS:
-                        FACTS.append(f)
-                        new_added.append(f)
-            system_prompt = _render_system_prompt(list(FACTS))
-
-        if new_added:
-            print(f"[memory] +{len(new_added)} fact(s): {new_added}", flush=True)
-            print(f"[memory] total facts ({len(FACTS)}): {FACTS}", flush=True)
+            if isinstance(new_facts, list):
+                new_added = []
+                with _facts_lock:
+                    for fact in new_facts:
+                        if isinstance(fact, str) and fact.strip():
+                            f = fact.strip()
+                            if f not in FACTS:
+                                FACTS.append(f)
+                                new_added.append(f)
+                    system_prompt = _render_system_prompt(list(FACTS))
+                if new_added:
+                    print(f"[memory] +{len(new_added)} fact(s): {new_added}", flush=True)
+                print(f"[memory] total facts ({len(FACTS)}): {FACTS}", flush=True)
+                with _args_lock:
+                    _server.ARGS.system_prompt = system_prompt
         else:
-            print(f"[memory] no new facts; total facts ({len(FACTS)}): {FACTS}", flush=True)
-
-        with _args_lock:
-            _server.ARGS.system_prompt = system_prompt
+            print(f"[memory] no JSON array found in extraction response: {raw}", flush=True)
     except Exception as exc:
         print(f"[memory] extraction error: {exc}", flush=True)
 
 
 def _submit_extraction(user_msg: str, assistant_reply: str, ui: UIServer) -> "Future[None]":
     """Submit extraction and chain the pending turn on completion."""
-    global _in_flight
+    global _in_flight, _pending
 
     def _on_done(fut: "Future[None]") -> None:
         global _in_flight
@@ -175,9 +152,9 @@ def _make_enqueue(ui: UIServer):
             # Only the done-callback advances the queue. This preserves strict FIFO
             # and avoids handoff races when a future just finished.
             if _in_flight is None:
-                print(f"[memory] starting extraction for user message ({len(user_msg)} chars)", flush=True)
                 _in_flight = _submit_extraction(user_msg, assistant_reply, ui)
             else:
+                # Queue for processing after current extraction finishes
                 _pending.append((user_msg, assistant_reply))
                 print(f"[memory] queued extraction turn; pending={len(_pending)} (worker busy)", flush=True)
     return _enqueue
