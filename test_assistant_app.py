@@ -21,6 +21,8 @@ from examples.assistant_app import (
     FACTS,
     _BASE_PROMPT,
     _EXTRACTION_PROMPT,
+    _args_lock,
+    _facts_lock,
     _make_enqueue,
     _render_system_prompt,
     _run_extraction,
@@ -153,8 +155,64 @@ def test_extraction_prompt_contains_instructions():
     """Extraction prompt should have clear instructions."""
     assert "Extract concrete" in _EXTRACTION_PROMPT
     assert "JSON array" in _EXTRACTION_PROMPT
-    assert "Do NOT include opinions" in _EXTRACTION_PROMPT
+    assert "opinions" in _EXTRACTION_PROMPT
+    assert "PRIORITY" in _EXTRACTION_PROMPT
     print("✓ extraction_prompt_contains_instructions")
+
+
+def test_run_extraction_uses_dialog_and_adds_fact_from_content():
+    """Model extraction should use full dialog prompt and add parsed fact."""
+    with _facts_lock:
+        FACTS.clear()
+
+    with _args_lock:
+        original_prompt = getattr(_server.ARGS, "system_prompt", "")
+
+    ui = MagicMock()
+    message = MagicMock(content='["User lives in Berlin"]')
+    choice = MagicMock(message=message)
+    response = MagicMock(choices=[choice])
+    ui.chat.completions.create.return_value = response
+
+    _run_extraction("I live in Berlin", "Great city", ui)
+
+    with _facts_lock:
+        assert "User lives in Berlin" in FACTS
+
+    call_kwargs = ui.chat.completions.create.call_args.kwargs
+    prompt = call_kwargs["messages"][0]["content"]
+    assert "User: I live in Berlin" in prompt
+    assert "Assistant: Great city" in prompt
+
+    with _args_lock:
+        _server.ARGS.system_prompt = original_prompt
+
+    print("✓ run_extraction uses dialog and adds fact from content")
+
+
+def test_run_extraction_fallbacks_to_reasoning_content():
+    """If content is empty, extraction should parse reasoning_content."""
+    with _facts_lock:
+        FACTS.clear()
+
+    with _args_lock:
+        original_prompt = getattr(_server.ARGS, "system_prompt", "")
+
+    ui = MagicMock()
+    message = MagicMock(content="", reasoning_content='["User has a cat"]')
+    choice = MagicMock(message=message)
+    response = MagicMock(choices=[choice])
+    ui.chat.completions.create.return_value = response
+
+    _run_extraction("I have a cat", "Nice", ui)
+
+    with _facts_lock:
+        assert "User has a cat" in FACTS
+
+    with _args_lock:
+        _server.ARGS.system_prompt = original_prompt
+
+    print("✓ run_extraction falls back to reasoning_content")
 
 
 if __name__ == "__main__":
@@ -170,5 +228,7 @@ if __name__ == "__main__":
     test_callback_invocation()
     test_facts_accumulation_logic()
     test_extraction_prompt_contains_instructions()
+    test_run_extraction_uses_dialog_and_adds_fact_from_content()
+    test_run_extraction_fallbacks_to_reasoning_content()
     
     print("\n✓ All tests passed!\n")

@@ -320,6 +320,7 @@ class Completions:
         repeat_penalty: float,
         stream: bool,
         enable_thinking: bool | None = None,
+        reasoning_format: str | None = None,
         suppress_after_response: bool = False,
     ) -> "ChatCompletion | Iterator[ChatCompletionChunk]":
         body: dict[str, Any] = {
@@ -334,6 +335,8 @@ class Completions:
         }
         if enable_thinking is not None:
             body["enable_thinking"] = enable_thinking
+        if reasoning_format is not None:
+            body["reasoning_format"] = reasoning_format
         if suppress_after_response:
             body["suppress_after_response"] = True
         if tools:
@@ -361,6 +364,7 @@ class Completions:
         top_k: int = _server.DEFAULT_GEN_PARAMS["top_k"],
         repeat_penalty: float = _server.DEFAULT_GEN_PARAMS["repeat_penalty"],
         enable_thinking: bool | None = None,
+        reasoning_format: str | None = None,
         suppress_after_response: bool = False,
     ) -> "ChatCompletion | Iterator[ChatCompletionChunk]":
         effective_tools = tools if tools is not None else self._tools
@@ -389,6 +393,7 @@ class Completions:
             repeat_penalty=repeat_penalty,
             stream=stream if not effective_tools else False,
             enable_thinking=enable_thinking,
+            reasoning_format=reasoning_format,
             suppress_after_response=suppress_after_response,
         )
 
