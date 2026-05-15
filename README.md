@@ -57,6 +57,15 @@ npm run build      # rebuild bundle.js / bundle.css
 ```
 
 
+## Add model locally
+
+You should `pip install huggingface_hub` to download models from HuggingFace Hub:
+```bash
+hf download Qwen/Qwen3-1.7B --local-dir models/Qwen3-1.7B
+python server.py --model Qwen3-1.7B
+```
+
+
 ### All options
 
 | Flag | Default | Description |
@@ -263,15 +272,6 @@ This ensures:
 - UI gets clean, human-readable answers
 - Callback receives full JSON for parsing
 - Memory extraction happens asynchronously without blocking chat
-
----
-
-## Add model locally
-You should `pip install huggingface_hub` to download models from HuggingFace Hub:
-```bash
-hf download Qwen/Qwen3-1.7B --local-dir models/Qwen3-1.7B
-python server.py --model Qwen3-1.7B
-```
 
 ---
 
