@@ -12,9 +12,10 @@ import json
 import re
 import sys
 import threading
+from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, Deque
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -31,7 +32,7 @@ _facts_lock = threading.Lock()
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fact-merger")
 _state_lock = threading.Lock()
 _in_flight: "Future[None] | None" = None
-_pending: "tuple[list[str]] | None" = None
+_pending: Deque[list[str]] = deque()
 
 _BASE_PROMPT = (
     "You are a helpful assistant with memory. "
@@ -134,15 +135,14 @@ def _merge_facts_async(new_facts: list[str]) -> None:
 
 def _submit_merge(new_facts: list[str]) -> "Future[None]":
     """Submit fact merge and chain pending facts on completion."""
-    global _in_flight, _pending
+    global _in_flight
 
     def _on_done(fut: "Future[None]") -> None:
-        global _in_flight, _pending
+        global _in_flight
         with _state_lock:
-            item = _pending
-            _pending = None
-            if item is not None:
-                _in_flight = _submit_merge(item[0])
+            if _pending:
+                item = _pending.popleft()
+                _in_flight = _submit_merge(item)
             else:
                 _in_flight = None
 
@@ -152,16 +152,17 @@ def _submit_merge(new_facts: list[str]) -> "Future[None]":
 
 
 def _enqueue_facts(new_facts: list[str]) -> None:
-    """Enqueue fact merge: if worker is busy, overwrite pending with latest."""
+    """Enqueue fact merge: if worker is busy, queue in FIFO order."""
     if not new_facts:
         return
 
-    global _in_flight, _pending
+    global _in_flight
     with _state_lock:
         if _in_flight is None or _in_flight.done():
             _in_flight = _submit_merge(new_facts)
         else:
-            _pending = (new_facts,)
+            _pending.append(new_facts)
+            print(f"[memory] queued fact batch; pending={len(_pending)}", flush=True)
 
 
 def _on_response(user_msg: str, assistant_reply: str) -> None:
