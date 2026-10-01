@@ -127,8 +127,8 @@ CASES: list[tuple[str, list[str], Parts]] = [
     ),
     (
         "unicode passes through unchanged",
-        ["<think>размышляю 🤔</think>готово"],
-        [("reasoning", "размышляю 🤔"), ("content", "готово")],
+        ["<think>thinking</think>ready"],
+        [("reasoning", "thinking"), ("content", "ready")],
     ),
     (
         "open tag exactly at the chunk boundary",

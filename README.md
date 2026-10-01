@@ -15,7 +15,7 @@ Suitable for local or remote inference, prompt testing, and everyday work with l
 
 ```bash
 pip install -r requirements.txt
-python server.py --model gpt2
+python server.py --model gpt2 --prompt-style raw
 ```
 
 Demo in browser: `http://127.0.0.1:8080`
@@ -26,10 +26,6 @@ Demo in browser: `http://127.0.0.1:8080`
 
 * **1)** Model from `models/` folder
 
-```bash
-python server.py --model gpt2 --prompt-style raw
-# looks for models/gpt2/*
-```
 
 ```bash
 python server.py --model Qwen3-0.6B
@@ -58,6 +54,15 @@ The result is compiled into `server/public/` (this is the folder served by the s
 cd server/webui
 npm install        # first time or after changing package.json
 npm run build      # rebuild bundle.js / bundle.css
+```
+
+
+## Add model locally
+
+You should `pip install huggingface_hub` to download models from HuggingFace Hub:
+```bash
+hf download Qwen/Qwen3-1.7B --local-dir models/Qwen3-1.7B
+python server.py --model Qwen3-1.7B
 ```
 
 
@@ -267,15 +272,6 @@ This ensures:
 - UI gets clean, human-readable answers
 - Callback receives full JSON for parsing
 - Memory extraction happens asynchronously without blocking chat
-
----
-
-## Add model locally
-You should `pip install huggingface_hub` to download models from HuggingFace Hub:
-```bash
-hf download Qwen/Qwen3-1.7B --local-dir models/Qwen3-1.7B
-python server.py --model Qwen3-1.7B
-```
 
 ---
 
