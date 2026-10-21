@@ -169,7 +169,7 @@
 	}
 </script>
 
-<ScrollArea class="h-[100vh]">
+<ScrollArea class="h-full">
 	<Sidebar.Header class=" top-0 z-10 gap-4 bg-sidebar/50 p-4 pb-2 backdrop-blur-lg md:sticky">
 		<a href="#/" onclick={handleMobileSidebarItemClick}>
 			<h1 class="inline-flex items-center gap-1 px-2 text-xl font-semibold">Aiffy</h1>

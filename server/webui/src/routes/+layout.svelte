@@ -38,7 +38,6 @@
 	let isMobile = new IsMobile();
 	let isDesktop = $derived(!isMobile.current);
 	let sidebarOpen = $state(false);
-	let innerHeight = $state<number | undefined>();
 	let chatSidebar:
 		| { activateSearchMode?: () => void; editActiveConversation?: () => void }
 		| undefined = $state();
@@ -251,8 +250,8 @@
 		onCancel={handleTitleUpdateCancel}
 	/>
 
-	<Sidebar.Provider bind:open={sidebarOpen}>
-		<div class="flex h-screen w-full" style:height="{innerHeight}px">
+	<Sidebar.Provider bind:open={sidebarOpen} class="h-dvh overflow-hidden">
+		<div class="flex h-full w-full">
 			<Sidebar.Root class="h-full">
 				<ChatSidebar bind:this={chatSidebar} />
 			</Sidebar.Root>
@@ -273,4 +272,4 @@
 	</Sidebar.Provider>
 </Tooltip.Provider>
 
-<svelte:window onkeydown={handleKeydown} bind:innerHeight />
+<svelte:window onkeydown={handleKeydown} />
