@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+__pycache__
+**/__pycache__
+*.py[cod]
+models
+.env
+server/webui/node_modules
+server/webui/.svelte-kit
+server/webui/build
+server/public/_app

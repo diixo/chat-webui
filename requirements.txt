@@ -2,19 +2,20 @@
 # Install with: pip install -r requirements.txt
 
 # Web framework
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
 
-# HTTP client — used by UIServer (in-process ASGI transport)
-httpx>=0.27.0
+# HTTP client: used by UIServer (in-process ASGI transport)
+httpx==0.28.1
 
 # HuggingFace stack
-transformers>=4.45.0
-accelerate>=0.34.0      # multi-GPU / CPU offload via device_map="auto"
-torch>=2.3.0            # or torch with CUDA: pip install torch --index-url https://download.pytorch.org/whl/cu121
+transformers==4.56.1
+accelerate==1.10.1      # multi-GPU / CPU offload via device_map="auto"
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
 
 # Optional: faster tokenization
-tokenizers>=0.20.0
+tokenizers==0.22.2
 
 # Optional: 4-bit / 8-bit quantization
 # bitsandbytes>=0.43.0
@@ -23,6 +24,6 @@ tokenizers>=0.20.0
 # Optional: flash attention 2 (Linux / CUDA only)
 # flash-attn>=2.6.0
 
-loguru>=0.6.0
-requests>=2.31.0
-python-dotenv>=1.0.0
+loguru==0.7.3
+requests==2.32.4
+python-dotenv==1.1.1

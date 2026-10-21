@@ -22,6 +22,21 @@ Demo in browser: `http://127.0.0.1:8080`
 
 ---
 
+## Run with Docker
+
+Build the CPU-only image and start the server:
+
+```bash
+docker compose up --build
+```
+
+The image installs the pinned Python dependencies, downloads GPT-2 into
+`models/gpt2` during the build, and starts the server with that local model in
+raw prompt mode. The model is stored in the image, so it is not downloaded again
+when restarting the existing container. Open `http://127.0.0.1:8080`.
+
+---
+
 ## Running the Server
 
 * **1)** Model from `models/` folder
