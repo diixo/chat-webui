@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Trash2, Pencil } from '@lucide/svelte';
@@ -28,25 +27,6 @@
 	let selectedModeLabel = $derived(
 		MODES.find((m) => m.value === chatModeStore.mode)?.label ?? 'Select mode…'
 	);
-
-	// ── Data source config ────────────────────────────────────────────────────
-	let configData = $state<Record<string, string[]>>({});
-	let selectedSource = $state('');
-
-	let sourceKeys = $derived(Object.keys(configData));
-
-	onMount(async () => {
-		try {
-			const res = await fetch('/config.json');
-			if (res.ok) {
-				configData = await res.json();
-				const first = Object.keys(configData)[0];
-				if (first) selectedSource = first;
-			}
-		} catch (e) {
-			console.warn('Could not load config.json', e);
-		}
-	});
 
 	const sidebar = Sidebar.useSidebar();
 
@@ -199,32 +179,6 @@
 			</Select.Root>
 		</div>
 	</Sidebar.Group>
-
-	{#if sourceKeys.length > 0}
-		<Sidebar.Group class="p-0 px-4 pt-3 pb-1">
-			<div class="space-y-1.5">
-				<p class="text-xs font-medium text-muted-foreground">Available sources of data</p>
-				<Select.Root
-					type="single"
-					value={selectedSource}
-					onValueChange={(v) => {
-						selectedSource = v;
-					}}
-				>
-					<Select.Trigger class="w-full bg-background">
-						{selectedSource || 'Select source…'}
-					</Select.Trigger>
-					<Select.Content>
-						{#each sourceKeys as key (key)}
-							<Select.Item value={key} label={key}>{key}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-			</div>
-		</Sidebar.Group>
-
-		<div class="mx-4 border-t border-border/50 pt-1"></div>
-	{/if}
 
 	<Sidebar.Group class="mt-2 space-y-2 p-0 px-4">
 		{#if (filteredConversations.length > 0 && isSearchModeActive) || !isSearchModeActive}
