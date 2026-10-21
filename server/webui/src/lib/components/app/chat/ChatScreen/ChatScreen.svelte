@@ -348,7 +348,7 @@
 	<div
 		bind:this={chatScrollContainer}
 		aria-label="Chat interface with file drop zone"
-		class="flex h-full flex-col-reverse overflow-y-auto px-4 md:px-6"
+		class="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto px-4 md:px-6"
 		ondragenter={handleDragEnter}
 		ondragleave={handleDragLeave}
 		ondragover={handleDragOver}
@@ -418,16 +418,16 @@
 {:else}
 	<div
 		aria-label="Welcome screen with file drop zone"
-		class="flex h-full items-center justify-center"
+		class="flex min-h-0 flex-1 flex-col overflow-y-auto py-16"
 		ondragenter={handleDragEnter}
 		ondragleave={handleDragLeave}
 		ondragover={handleDragOver}
 		ondrop={handleDrop}
 		role="main"
 	>
-		<div class="w-full max-w-[48rem] px-4">
+		<div class="m-auto w-full max-w-[48rem] shrink-0 px-4">
 			<div class="mb-10 text-center" in:fade={{ duration: 300 }}>
-				<h1 class="text-2xl font-semibold tracking-tight md:text-3xl">Aiffy</h1>
+				<h1 class="text-2xl font-semibold tracking-tight md:text-3xl">Aitetiq</h1>
 
 				<h4 class="mb-2 font-semibold">deliver impossible excellence</h4>
 

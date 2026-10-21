@@ -250,8 +250,9 @@
 		onCancel={handleTitleUpdateCancel}
 	/>
 
-	<Sidebar.Provider bind:open={sidebarOpen} class="h-dvh overflow-hidden">
-		<div class="flex h-full w-full">
+	<!-- Keep page scrolling inside the chat/sidebar instead of the document. -->
+	<Sidebar.Provider bind:open={sidebarOpen} class="fixed inset-0 min-h-0 overflow-hidden">
+		<div class="flex h-full min-h-0 min-w-0 w-full">
 			<Sidebar.Root class="h-full">
 				<ChatSidebar bind:this={chatSidebar} />
 			</Sidebar.Root>
@@ -265,7 +266,7 @@
 				/>
 			{/if}
 
-			<Sidebar.Inset class="flex flex-1 flex-col overflow-hidden">
+			<Sidebar.Inset class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				{@render children?.()}
 			</Sidebar.Inset>
 		</div>

@@ -169,10 +169,10 @@
 	}
 </script>
 
-<ScrollArea class="h-full">
+<ScrollArea class="h-full min-h-0">
 	<Sidebar.Header class=" top-0 z-10 gap-4 bg-sidebar/50 p-4 pb-2 backdrop-blur-lg md:sticky">
 		<a href="#/" onclick={handleMobileSidebarItemClick}>
-			<h1 class="inline-flex items-center gap-1 px-2 text-xl font-semibold">Aiffy</h1>
+			<h1 class="inline-flex items-center gap-1 px-2 text-xl font-semibold">Aitetiq</h1>
 		</a>
 
 		<ChatSidebarActions {handleMobileSidebarItemClick} bind:isSearchModeActive bind:searchQuery />
