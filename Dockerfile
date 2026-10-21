@@ -12,7 +12,9 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
-RUN hf download aitetic/gpt2 --local-dir ./models/gpt2
+RUN hf download aitetic/gpt2 \
+    --include config.json generation_config.json merges.txt model.safetensors tokenizer.json tokenizer_config.json vocab.json \
+    --local-dir ./models/gpt2
 
 COPY . .
 
