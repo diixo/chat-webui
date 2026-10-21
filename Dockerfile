@@ -12,7 +12,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
-RUN hf download gpt2 --local-dir ./models/gpt2
+RUN hf download aitetic/gpt2 --local-dir ./models/gpt2
 
 COPY . .
 
