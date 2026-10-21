@@ -76,6 +76,12 @@ npm run build      # rebuild bundle.js / bundle.css
 
 You should `pip install huggingface_hub` to download models from HuggingFace Hub:
 ```bash
+hf download gpt2 --local-dir ./models/gpt2
+python server.py --model gpt2
+```
+
+or:
+```bash
 hf download Qwen/Qwen3-1.7B --local-dir models/Qwen3-1.7B
 python server.py --model Qwen3-1.7B
 ```

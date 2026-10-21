@@ -12,8 +12,9 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
-COPY . .
 RUN hf download gpt2 --local-dir ./models/gpt2
+
+COPY . .
 
 EXPOSE 8080
 
