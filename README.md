@@ -305,14 +305,6 @@ The file can be edited directly — no rebuild is needed:
 ### Configuration
 Configurate by **config.json** in `server/webui/static/config.json` that copied to `server/public/config.json` when rebuilding the UI. 
 
-**Example:**
-```json
-{
-  "Jira": ["Project Alpha", "Project Beta"],
-  "Confluence": ["Engineering Docs", "HR Space"],
-  "GitHub": ["frontend", "backend"]
-}
-```
 
 -When rebuilding the UI, the file `server/webui/static/config.json` is automatically copied to `server/public/`.
 
